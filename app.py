@@ -25,12 +25,15 @@ embed_model= OllamaEmbedding("mistral-nemo:latest")
 # 配置使用SpacyTextSplitter
 from llama_index.core.node_parser import CodeSplitter,SentenceSplitter
 
+
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.text_splitter import CodeSplitter
 Settings.llm = llm_ollama
 Settings.embed_model = embed_model
-# Settings.text_splitter = CodeSplitter(
-#         language="python",  max_chars=1000, chunk_lines=10
-#     )
-Settings.text_splitter = SentenceSplitter(chunk_size=1024)
+Settings.text_splitter = CodeSplitter(
+        language="cpp"
+    )
+
 ###################################
 #
 # 第2步：配置向量数据库
@@ -79,7 +82,7 @@ DATA_DIR = r"D:\sql\openGauss-server\src\gausskernel\storage\access\redo"# 知�
 def load_data():
     with st.spinner(text="加载文档并建立索引，需要1-2分钟"):
 # 将指定目录下的文档建立索引，保存到向量数据库
-        documents = SimpleDirectoryReader(input_dir=DATA_DIR, recursive=True).load_data() 
+        documents = SimpleDirectoryReader(input_dir=DATA_DIR, recursive=True, exclude=["*.txt", "Makefile"]).load_data() 
         index = VectorStoreIndex.from_documents(
             documents, storage_context=chroma_storage_context)
     return index
