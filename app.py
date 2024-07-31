@@ -9,10 +9,10 @@ from llama_index.core import Settings
 
 # 配置ollama的LLM模型，这里我们用gemma:2b
 from llama_index.llms.ollama import Ollama
-llm_ollama = Ollama(model="gemma2:27b", request_timeout=600.0)
+llm_ollama = Ollama(model="mistral-nemo:latest", request_timeout=600.0)
 
 from llama_index.embeddings.ollama import OllamaEmbedding
-embed_model= OllamaEmbedding("mistral-nemo:latest")
+embed_model= OllamaEmbedding("mxbai-embed-large:latest")
 
 
 # 配置Rerank模型，这里我们用BAAI/bge-reranker-base
@@ -23,15 +23,14 @@ embed_model= OllamaEmbedding("mistral-nemo:latest")
 # )
 
 # 配置使用SpacyTextSplitter
-from llama_index.core.node_parser import CodeSplitter,SentenceSplitter
-
-
-from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.text_splitter import CodeSplitter
 Settings.llm = llm_ollama
 Settings.embed_model = embed_model
 Settings.text_splitter = CodeSplitter(
-        language="cpp"
+        language="cpp",
+        chunk_lines = 5120,
+        chunk_lines_overlap = 1024,
+        max_chars = 1024
     )
 
 ###################################
@@ -133,8 +132,8 @@ refine_template = PromptTemplate(refine_template_str)
 ###################################
 
 # 仅第一次运行时使用load_data建立索引，再次运行使用load_index读取索引
-# index = load_data();
-index = load_index();
+index = load_data();
+# index = load_index();
 st.write("Debug:  print session keys 1", st.session_state.keys())
 
 # 初始化检索引擎
