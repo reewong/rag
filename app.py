@@ -9,10 +9,10 @@ from llama_index.core import Settings
 
 # 配置ollama的LLM模型，这里我们用gemma:2b
 from llama_index.llms.ollama import Ollama
-llm_ollama = Ollama(model="mistral-nemo:latest", request_timeout=600.0)
+llm_ollama = Ollama(model="mistral-nemo:12b-instruct-2407-q8_0", request_timeout=600.0)
 
 from llama_index.embeddings.ollama import OllamaEmbedding
-embed_model= OllamaEmbedding("mxbai-embed-large:latest")
+embed_model= OllamaEmbedding("mistral-nemo:latest")
 
 
 # 配置Rerank模型，这里我们用BAAI/bge-reranker-base
@@ -28,9 +28,9 @@ Settings.llm = llm_ollama
 Settings.embed_model = embed_model
 Settings.text_splitter = CodeSplitter(
         language="cpp",
-        chunk_lines = 5120,
+        chunk_lines = 2000,
         chunk_lines_overlap = 1024,
-        max_chars = 1024
+        max_chars = 5120
     )
 
 ###################################
