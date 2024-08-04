@@ -29,9 +29,18 @@ class RAGDebugHandler(BaseCallbackHandler):
         self.llm_inputs.extend(prompts)
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
-        logging.info(f"LLM Response:\n{response}")
+        # logging.info(f"LLM Response:\n{response}")
         self.llm_outputs.append(response)
 
+    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        """Run on new LLM token. Only available when streaming is enabled.
+
+        Args:
+            token (str): The new token.
+            **kwargs (Any): Additional keyword arguments.
+        """
+        sys.stdout.write(token)
+        sys.stdout.flush()
 # 修改您的RAG设置以包含调试处理器
 debug_handler = RAGDebugHandler()
 std_out_handler = StdOutCallbackHandler()
@@ -131,19 +140,18 @@ while True:
         continue
 
     # Prompt
-    template = """使用以下上下文来回答最后的问题。
+    template = """使用以下上下文来回答我最后提出的问题。
     如果你不知道答案，就直接说不知道，不要试图编造答案。
     请基于提供的代码片段回答问题，重点关注代码的功能、结构和关键逻辑。
-    使用中文回答
+    务必使用中文回答
     {context}
-    问题: {question}
-    中文回答:"""
+    问题: 基于以上给出的代码片段，{question}， 使用中文回答"""
     QA_CHAIN_PROMPT = PromptTemplate(
         input_variables=["context", "question"],
         template=template,
     )
 
-    llm = Ollama(model="gemma2:27b", callback_manager=CallbackManager([debug_handler]))
+    llm = Ollama(model="mistral-nemo:12b-instruct-2407-q8_0", callback_manager=CallbackManager([debug_handler]))
     retreval = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
@@ -161,19 +169,19 @@ while True:
     )
 
     result = qa_chain({"query": query})
-    print("\n--- 调试信息摘要 ---")
-    if debug_handler.retriever_inputs:
-        print(f"检索器查询: {debug_handler.retriever_inputs[-1]}")
-    print(f"检索到的文档数量: {len(debug_handler.retriever_outputs)}")
-    print("LLM输入提示:")
-    if debug_handler.llm_inputs:
-        print(debug_handler.llm_inputs[-1])
-    print("LLM输出:")
-    if debug_handler.llm_outputs:
-        print(debug_handler.llm_outputs[-1])
-    # 检查源文档
-    if 'source_documents' in result:
-        print("\n--- 源文档 ---")
-        for i, doc in enumerate(result['source_documents']):
-            print(f"文档 {i + 1}:")
-            print(doc.page_content[:200] + "...")  # 打印每个文档的前200个字符
+    # print("\n--- 调试信息摘要 ---")
+    # if debug_handler.retriever_inputs:
+    #     print(f"检索器查询: {debug_handler.retriever_inputs[-1]}")
+    # print(f"检索到的文档数量: {len(debug_handler.retriever_outputs)}")
+    # print("LLM输入提示:")
+    # if debug_handler.llm_inputs:
+    #     print(debug_handler.llm_inputs[-1])
+    # print("LLM输出:")
+    # if debug_handler.llm_outputs:
+    #     print(debug_handler.llm_outputs[-1])
+    # # 检查源文档
+    # if 'source_documents' in result:
+    #     print("\n--- 源文档 ---")
+    #     for i, doc in enumerate(result['source_documents']):
+    #         print(f"文档 {i + 1}:")
+    #         print(doc.page_content[:200] + "...")  # 打印每个文档的前200个字符
