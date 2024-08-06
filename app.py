@@ -132,8 +132,8 @@ refine_template = PromptTemplate(refine_template_str)
 ###################################
 
 # 仅第一次运行时使用load_data建立索引，再次运行使用load_index读取索引
-index = load_data();
-# index = load_index();
+# index = load_data();
+index = load_index();
 st.write("Debug:  print session keys 1", st.session_state.keys())
 
 # 初始化检索引擎
