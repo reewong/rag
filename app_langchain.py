@@ -55,7 +55,8 @@ embed_model_code = HuggingFaceEmbeddings(
 
 def indexing_vec():
     # load the code and split it into chunks
-    repo_path = r"D:\sql\openGauss-server\src\gausskernel\storage\access\redo"
+    # repo_path = r"D:\sql\openGauss-server\src\gausskernel\storage\access\redo"jnnjnjjjjn
+    repo_path = r"/home/code/sql/openGauss-server/src/gausskernel/storage/access/redo"
     loader = GenericLoader.from_filesystem(
         repo_path,
         glob="**/*",
@@ -116,7 +117,12 @@ def main():
         template=template,
     )
     # 初始化检索引擎)
-    llm = Ollama(model="mistral-nemo:12b-instruct-2407-q8_0", callback_manager=CallbackManager([debug_handler]))
+    llm = Ollama(
+        model="mistral-nemo:12b-instruct-2407-q8_0", 
+        callback_manager=CallbackManager([debug_handler]), 
+        base_url="http://host.docker.internal:11434"
+    )
+
     retreval = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
