@@ -16,6 +16,8 @@ from langchain_community.document_loaders.parsers import LanguageParser
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from queue import Queue
+from transformers import GPT2TokenizerFast
+
 # import warnings
 
 # Suppress the optimum warning
@@ -23,6 +25,14 @@ from queue import Queue
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+def cal_token(text):
+    # 初始化GPT-2分词器
+    tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+    # 使用分词器进行编码，并计算Token数量
+    tokens = tokenizer.encode(text)
+    token_count = len(tokens)
+    return token_count
 
 class ThreadSafeRAGDebugHandler(BaseCallbackHandler):
     def __init__(self):
@@ -152,6 +162,7 @@ def main():
     {context}
 
     问题: {input}
+    请务必使用中文作答
     """
     
     prompt = PromptTemplate(
@@ -189,7 +200,9 @@ def main():
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 chat_history = st.session_state.memory.load_memory_variables({})["history"]
-                if len(chat_history) > 10:
+                st.write(f"===================chat history===================")
+                st.write(chat_history)
+                if cal_token(chat_history) > 5000:
                     summary = summary_conversation(chat_history)
                     chat_history = [HumanMessage(content = "上次的对话总结为："),
                                     AIMessage(content = summary)]
@@ -198,20 +211,20 @@ def main():
                     "chat_history": chat_history
                 })
                 
-                st.write("==================document info======================")
-                for i, doc in enumerate(response['context']):
-                    st.write(f"Document {i + 1} Metadata: {doc.metadata}")
-                    st.write(f"Document {i + 1} Content:\n{doc.page_content}\n")
+                # st.write("==================document info======================")
+                # for i, doc in enumerate(response['context']):
+                #     st.write(f"Document {i + 1} Metadata: {doc.metadata}")
+                #     st.write(f"Document {i + 1} Content:\n{doc.page_content}\n")
                 
                 st.write("====================answer=============================")
                 st.write(response["answer"])
                 message = {"role": "assistant", "content": response["answer"]}
                 st.session_state.messages.append(message)
-
+                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
                 # 显示调试信息
                 st.write("====================debug info=========================")
                 debug_info = debug_handler.get_debug_info()
-                st.write("Retriever Inputs:", debug_info["retriever_inputs"])
+                # st.write("Retriever Inputs:", debug_info["retriever_inputs"])
                 st.write("LLM Inputs:", debug_info["llm_inputs"])
 
 if __name__ == "__main__":
