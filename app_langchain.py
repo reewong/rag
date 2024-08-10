@@ -17,7 +17,7 @@ from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from queue import Queue
 from transformers import GPT2TokenizerFast
-
+from langchain.chains import LLMChain
 # import warnings
 
 # Suppress the optimum warning
@@ -34,6 +34,34 @@ def cal_token(text):
     token_count = len(tokens)
     return token_count
 
+def should_use_rag(query):
+    rag_decision_prompt = PromptTemplate(
+        input_variables=["query"],
+        template="""Determine if the following query requires access to specific information from a knowledge base:
+
+Query: {query}
+
+Answer with 'RAG' if the query likely requires specific information from a private code base provieded by user, or 'LLM' if it is not. You may provide an explanation after your decision.
+
+Decision:"""
+    )
+    rag_decision_chain = LLMChain(llm=llm, prompt=rag_decision_prompt)
+    answer = rag_decision_chain.run(query)
+    
+    st.write("================should use rag answer is ===================")
+    st.write(f"Raw answer: '{answer}'")
+    
+    # 提取决策（RAG 或 LLM）
+    decision = answer.split()[0].strip().upper()
+    
+    st.write(f"Extracted decision: '{decision}'")
+    st.write(f"Decision length: {len(decision)}")
+    st.write(f"ASCII values: {[ord(c) for c in decision]}")
+    
+    is_rag = decision == "RAG"
+    st.write(f"Is RAG?: {is_rag}")
+    
+    return is_rag
 class ThreadSafeRAGDebugHandler(BaseCallbackHandler):
     def __init__(self):
         self.queue = Queue()
@@ -152,8 +180,8 @@ def main():
 
     # 更新后的Prompt，包含聊天历史
     template = """使用以下提供的上下文和聊天历史来回答最后的问题。如果你不知道答案，就直接说不知道，不要试图编造答案。
-    请基于提供的代码片段和历史对话回答问题，重点关注代码的功能、结构和关键逻辑。
-    务必使用中文回答。
+请基于提供的代码片段和历史对话回答问题，重点关注代码的功能、结构和关键逻辑。
+务必使用中文回答。
 
     聊天历史：
     {chat_history}
@@ -161,8 +189,8 @@ def main():
     上下文信息：
     {context}
 
-    问题: {input}
-    请务必使用中文作答
+问题: {input}
+请务必使用中文作答
     """
     
     prompt = PromptTemplate(
@@ -199,33 +227,58 @@ def main():
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
+                use_rag = should_use_rag(user_input)
+                st.write(f"use_rag==========")
+                st.write(use_rag)
                 chat_history = st.session_state.memory.load_memory_variables({})["history"]
-                st.write(f"===================chat history===================")
-                st.write(chat_history)
+                # st.write(f"===================chat history===================")
+                # st.write(chat_history)
                 if cal_token(chat_history) > 5000:
                     summary = summary_conversation(chat_history)
                     chat_history = [HumanMessage(content = "上次的对话总结为："),
                                     AIMessage(content = summary)]
-                response = retrieval_chain.invoke({
-                    "input": user_input,
-                    "chat_history": chat_history
-                })
-                
-                # st.write("==================document info======================")
-                # for i, doc in enumerate(response['context']):
-                #     st.write(f"Document {i + 1} Metadata: {doc.metadata}")
-                #     st.write(f"Document {i + 1} Content:\n{doc.page_content}\n")
-                
-                st.write("====================answer=============================")
-                st.write(response["answer"])
-                message = {"role": "assistant", "content": response["answer"]}
-                st.session_state.messages.append(message)
-                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
+                if use_rag:                    
+                    response = retrieval_chain.invoke({
+                        "input": user_input,
+                        "chat_history": chat_history
+                    })
+                    
+                    # st.write("==================document info======================")
+                    # for i, doc in enumerate(response['context']):
+                    #     st.write(f"Document {i + 1} Metadata: {doc.metadata}")
+                    #     st.write(f"Document {i + 1} Content:\n{doc.page_content}\n")
+                    
+                    st.write("====================answer=============================")
+                    st.write(response["answer"])
+                    message = {"role": "assistant", "content": response["answer"]}
+                    st.session_state.messages.append(message)
+                    st.session_state.memory.chat_memory.add_ai_message(response["answer"])
+
+                else: 
+                    # Use direct LLM
+                    direct_llm_prompt = PromptTemplate(
+                        input_variables=["chat_history", "query"],
+                        template="""基于以下的对话历史和当前问题，请给出一个恰当的回答：
+
+对话历史：
+{chat_history}
+
+当前问题：{query}
+
+回答："""
+                    )
+                    direct_llm_chain = LLMChain(llm=llm, prompt=direct_llm_prompt)
+                    answer = direct_llm_chain.run(chat_history=chat_history, query=user_input)
+                    
+                    st.write("使用直接 LLM 回答：")
+                    st.write(answer)
+                    # Add the assistant's response to memory and message history
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.session_state.memory.chat_memory.add_ai_message(answer)
                 # 显示调试信息
                 st.write("====================debug info=========================")
                 debug_info = debug_handler.get_debug_info()
                 # st.write("Retriever Inputs:", debug_info["retriever_inputs"])
                 st.write("LLM Inputs:", debug_info["llm_inputs"])
-
 if __name__ == "__main__":
     main()
