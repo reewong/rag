@@ -41,7 +41,11 @@ def should_use_rag(query):
 
 Query: {query}
 
-Answer with 'RAG' if the query likely requires specific information from a private code base provieded by user, or 'LLM' if it is not. You may provide an explanation after your decision.
+Answer with 'RAG' if the query likely requires specific information about code from a specific code base provieded by user
+(for exmple, when user ask a specific code function, somthing about a code base, we recommend use rag for code base provided) 
+or 'LLM' if it is not because our RAG only care about code.Just answer 'RAG' or 'LLM' without other words.
+Then you may provide an explanation after your decision.
+
 
 Decision:"""
     )
@@ -66,11 +70,11 @@ class ThreadSafeRAGDebugHandler(BaseCallbackHandler):
     def __init__(self):
         self.queue = Queue()
 
-    def on_retriever_start(self, query: str, **kwargs: Any) -> None:
-        self.queue.put(("retriever_start", query))
+    # def on_retriever_start(self, query: str, **kwargs: Any) -> None:
+    #     self.queue.put(("retriever_start", query))
 
-    def on_retriever_end(self, documents: List[Any], **kwargs: Any) -> None:
-        self.queue.put(("retriever_end", documents))
+    # def on_retriever_end(self, documents: List[Any], **kwargs: Any) -> None:
+    #     self.queue.put(("retriever_end", documents))
 
     def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
         self.queue.put(("llm_start", prompts))
@@ -151,7 +155,8 @@ vectorstore = get_vectorstore()
 debug_handler = ThreadSafeRAGDebugHandler()
 # 初始化LLM
 llm = Ollama(
-    model="mistral-nemo:12b-instruct-2407-q8_0", 
+    # model="mistral-nemo:12b-instruct-2407-q8_0", 
+    model = "gemma2:27b",
     callback_manager=CallbackManager([debug_handler]), 
     base_url="http://host.docker.internal:11434"
 )
