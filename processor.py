@@ -1,15 +1,15 @@
 from typing import List
 import numpy as np
 from neo4j import GraphDatabase
-from graph_database.neo4j_manager import Neo4jManager
+from neo4j_manager import Neo4jManager
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from call_graph.call_graph_manager import CallGraphManager
+from call_graph_manager import CallGraphManager
 from typing import List, Dict, Set, Tuple
 from langchain_core.output_parsers import StrOutputParser
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from code_retrieval.retriever import CodeRetriever
+from retriever import CodeRetriever
 decomposition_prompt = PromptTemplate(
     input_variables=["question"],
     template="Break down this complex question into simpler sub-questions:\n{question}\nSub-questions:"
