@@ -15,13 +15,15 @@ decomposition_prompt = PromptTemplate(
     template="Break down this complex question into simpler sub-questions:\n{question}\nSub-questions:"
 )
 class Query_Processor:
-    def __init__(self, llm, gragh_db_mgr, source_code_store_mgr, call_gragh_mgr) -> None:
+    def __init__(self, llm, gragh_db_mgr, source_code_store_mgr, call_gragh_mgr, directory_structure, cmake_module_structure) -> None:
         self.llm = llm
         self.gragh_db_mgr = gragh_db_mgr
         self.source_mgr = source_code_manager(source_code_store_mgr)
         self.retriever = CodeRetriever(source_code_store_mgr.get_vector_store()) 
         self.call_graph_mgr = call_gragh_mgr
         self.parser = StrOutputParser()
+        self.directory_structure = directory_structure
+        self.cmake_module_structure = cmake_module_structure
     def decompose(self, question: str) -> list:
         chain = decomposition_prompt | self.llm | self.parser
         result = chain.invoke(question)
@@ -30,7 +32,7 @@ class Query_Processor:
         # Combine answers from sub-questions into a coherent response
         # This could be improved with more sophisticated NLP techniques
         return "\n\n".join([f"Sub-answer {i+1}: {answer}" for i, answer in enumerate(answers)])
-    def process_query(self, query: str) -> str:
+    def process_query(self, query: str, ) -> str:
         print(f"Processing query: {query}")
         # Step 1: Decompose the question if it's complex
         sub_questions = self.decompose(query)
@@ -133,6 +135,9 @@ Relevant Code Snippets:
             prompt += f"\nFunction: {func}\n{snippet}\n"
 
         prompt += f"""
+        basic project structure:
+        {self.directory_structure}
+        {self.cmake_module_structure}
         Additional Context:
         {self._format_relevant_docs(relevant_docs)}
         {graph_info}
@@ -147,6 +152,7 @@ Relevant Code Snippets:
 
         Please provide a comprehensive answer based on this information.
         """
+        print(prompt)
         return prompt
     def _format_relevant_docs(self, relevant_docs: List[Dict]):
         prompt = ''        

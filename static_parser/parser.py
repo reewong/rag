@@ -2,7 +2,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Tuple
-def wawerwerparse_doxygen_output(output_dir: Path) -> Tuple[Dict, List[Tuple[str, str, str]]]:
+def parse_doxygen_output(output_dir: Path) -> Tuple[Dict, List[Tuple[str, str, str]]]:
     parsed_data = {
         "classes": {},
         "functions": {},
@@ -94,3 +94,75 @@ def extract_declaration(elem) -> str:
         declaration += argsstring.text
     
     return declaration.strip()
+
+import os
+import re
+import subprocess
+
+def run_cmake_trace(cmake_path):
+    result = subprocess.run(['cmake', '--trace-expand', cmake_path], 
+                            capture_output=True, text=True)
+    return result.stdout
+
+def parse_cmake_trace(trace_output):
+    modules = {}
+    current_file = ""
+    
+    for line in trace_output.split('\n'):
+        file_match = re.search(r'CMakeLists\.txt:(\d+)\s*\((.*?)\)', line)
+        if file_match:
+            current_file = os.path.dirname(file_match.group(2))
+        
+        if current_file not in modules:
+            modules[current_file] = set()
+        
+        if 'add_library' in line or 'add_executable' in line:
+            match = re.search(r'add_\w+\s*\(([\w_-]+)', line)
+            if match:
+                modules[current_file].add(match.group(1))
+        
+        if 'add_subdirectory' in line:
+            match = re.search(r'add_subdirectory\s*\(([\w_-]+)', line)
+            if match:
+                modules[current_file].add(f"subdir:{match.group(1)}")
+    
+    return modules
+
+def extract_modules(root_dir):
+    cmake_trace = run_cmake_trace(root_dir)
+    return parse_cmake_trace(cmake_trace)
+
+def get_basic_structure_by_cmake(root_directory):
+    module_structure = extract_modules(root_directory)
+    cmake_structure_str = ''
+    for directory, modules in module_structure.items():
+        cmake_structure_str += f"Directory: {directory}\n"
+        cmake_structure_str +="Modules:\n"
+        for module in modules:
+            if module.startswith("subdir:"):
+                cmake_structure_str += f"  - Subdirectory: {module[7:]}"
+            else:
+                cmake_structure_str += f"  - {module}"
+    return cmake_structure_str
+
+
+import os
+
+def generate_directory_structure(startpath, exclude_dirs=None, exclude_files=None):
+    if exclude_dirs is None:
+        exclude_dirs = set()
+    if exclude_files is None:
+        exclude_files = set()
+
+    tree = []
+    for root, dirs, files in os.walk(startpath):
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        level = root.replace(startpath, '').count(os.sep)
+        indent = '│   ' * (level - 1) + '├── ' if level > 0 else ''
+        tree.append(f"{indent}{os.path.basename(root)}/")
+        subindent = '│   ' * level + '├── '
+        for file in sorted(files):
+            if file not in exclude_files:
+                tree.append(f"{subindent}{file}")
+
+    return '\n'.join(tree)
