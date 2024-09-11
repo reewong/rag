@@ -1,10 +1,10 @@
-from static_parser.parser import parse_doxygen_output, generate_directory_structure, get_basic_structure_by_cmake
-from code_splitter import load_and_splitter
-from call_graph.call_graph_manager import CallGraphManager
-from code_retrieval.retriever import GenVectorStore
+from parser import parse_doxygen_output, generate_directory_structure, get_basic_structure_by_cmake
+from load_and_splitter import load_and_split_project
+from call_graph_manager import CallGraphManager
+from retriever import GenVectorStore
 # from vector_store.embeddings import create_vector_embeddings
-from graph_database.neo4j_manager import Neo4jManager
-from query_processing.processor import Query_Processor
+from neo4j_manager import Neo4jManager
+from processor import Query_Processor
 from langchain_community.llms import Ollama
 from langchain_community.embeddings import OllamaEmbeddings
 import config
@@ -24,7 +24,7 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     directory_structure = generate_directory_structure(project_path, exclude_dirs, exclude_files)
     cmake_module_structure = get_basic_structure_by_cmake(project_path)
     
-    split_code = load_and_splitter(project_path)
+    split_code = load_and_split_project(project_path)
 
     parsed_static_docs = parse_doxygen_output(f"{project_path}/doxygen_output")
     call_graph = CallGraphManager()
