@@ -29,6 +29,9 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     parsed_static_docs = parse_doxygen_output(f"{project_path}/doxygen_output")
     call_graph = CallGraphManager()
     call_graph.build_call_graph(f"{project_path}/doxygen_output")
+    parsed_data, relationships = parse_doxygen_output(f"{project_path}/doxygen_output")
+    call_graph = CallGraphManager(parsed_data, relationships)
+    
     embed_model= OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
     source_code_vdb_mgr = GenVectorStore(embed_model)
     source_code_vdb_mgr.create_vector_store(split_code)

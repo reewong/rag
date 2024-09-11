@@ -110,9 +110,7 @@ Relevant Code Snippets:
             snippets.append(prompt)
         return snippets
     def _get_related_functions(self, main_function: str, max_depth: int = 2) -> Set[str]:
-        called_functions = self.call_graph_mgr.get_called_functions(main_function, max_depth)
-        calling_functions = self.call_graph_mgr.get_calling_functions(main_function, 1)  # Only immediate callers
-        return called_functions.union(calling_functions)
+        return self.call_graph_mgr.get_related_functions(main_function, max_depth)
 
         
 

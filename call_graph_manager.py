@@ -1,10 +1,42 @@
 import networkx as nx
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
+import tree_sitter  
 class CallGraphManager:
-    def __init__(self):
+    def __init__(self, parsed_data: Dict, relationships: List[Tuple[str, str, str]]):
         self.call_graph = nx.DiGraph()
-    def build_call_graph(self, static_path):
-        pass
+        self.cpp_parser = tree_sitter.Parser()
+        self.cpp_parser.set_language(tree_sitter.Language('path/to/tree-sitter-cpp', 'cpp'))
+        self.build_call_graph(parsed_data, relationships)
+
+    def build_call_graph(self, parsed_data: Dict, relationships: List[Tuple[str, str, str]]):
+             # Build initial graph from relationships
+        for from_entity, rel_type, to_entity in relationships:
+            if rel_type == 'CALLS':
+                self.call_graph.add_edge(from_entity, to_entity)
+        
+        # Process function bodies for more detailed analysis
+        self._process_function_bodies(parsed_data['functions'])
+
+    def _process_function_bodies(self, functions: Dict):
+        for func_name, func_data in functions.items():
+            func_body = func_data.get('details', '')  # Assuming 'details' contains the function body
+            called_functions = self._analyze_function_body(func_body)
+            for called_func in called_functions:
+                self.call_graph.add_edge(func_name, called_func)
+
+    def _analyze_function_body(self, func_body: str) -> List[str]:
+        called_functions = []
+        tree = self.cpp_parser.parse(func_body.encode())
+        
+        def traverse(node):
+            if node.type == 'call_expression':
+                func_name = node.child_by_field_name('function').text.decode()
+                called_functions.append(func_name)
+            for child in node.children:
+                traverse(child)
+        
+        traverse(tree.root_node)
+        return called_functions    
     def add_function_call(self, caller: str, callee: str):
         self.call_graph.add_edge(caller, callee)
 
@@ -23,7 +55,7 @@ class CallGraphManager:
         for func in list(calling_functions):
             calling_functions.update(self.get_calling_functions(func, depth - 1))
         return calling_functions
-    def _get_related_functions(self,main_function: str, max_depth: int = 2) -> Set[str]:
+    def get_related_functions(self, main_function: str, max_depth: int = 2) -> Set[str]:
         called_functions = self.get_called_functions(main_function, max_depth)
         calling_functions = self.get_calling_functions(main_function, 1)  # Only immediate callers
         return called_functions.union(calling_functions)
