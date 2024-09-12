@@ -1,15 +1,5 @@
-from typing import List, Dict, Optional
-from langchain.retrievers import VectorStoreRetriever
-class CodeRetriever:
-    def __init__(self, vector_store):
-        self.retriever = VectorStoreRetriever(vectorstore=vector_store)
-
-    def get_relevant_documents(self, query: str):
-        return self.retriever.get_relevant_documents(query)
-    
-# vector_store/faiss_store.py
-from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+# from langchain.embeddings import OpenAIEmbeddings  # 或者您使用的其他嵌入模型
 
 class GenVectorStore:
     def __init__(self, embedding):
@@ -19,8 +9,14 @@ class GenVectorStore:
     def create_vector_store(self, documents):
         self.vector_store = FAISS.from_documents(documents, self.embeddings)
 
-    def get_vector_store(self):
-        return self.vector_store
+    def get_retriever(self):
+        if self.vector_store:
+            return self.vector_store.as_retriever()
+        else:
+            raise ValueError("Vector store has not been created yet.")
 
     def search(self, query: str, k: int = 4):
-        return self.vector_store.similarity_search(query, k=k)
+        if self.vector_store:
+            return self.vector_store.similarity_search(query, k=k)
+        else:
+            raise ValueError("Vector store has not been created yet.")

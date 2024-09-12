@@ -7,6 +7,7 @@ from neo4j_manager import Neo4jManager
 from processor import Query_Processor
 from langchain_community.llms import Ollama
 from langchain_community.embeddings import OllamaEmbeddings
+from pathlib import Path
 import config
 
 def analyze_cpp_project(project_path: str, query: str) -> str:
@@ -18,20 +19,21 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
         # base_url="http://host.docker.internal:11434"
     )
 #   basic file
-    exclude_dirs = {'.git', '.vscode', 'build'}  # 你可能想要排除的目录
+    exclude_dirs = {'.git', '.vscode', 'build', 'doxygen_output', 'html'}  # 你可能想要排除的目录
     exclude_files = {'.gitignore', 'README.md'}  # 你可能想要排除的文件
 
     directory_structure = generate_directory_structure(project_path, exclude_dirs, exclude_files)
     cmake_module_structure = get_basic_structure_by_cmake(project_path)
+    print(directory_structure)
+    print(cmake_module_structure)
     
-    split_code = load_and_split_project(project_path)
-
-    parsed_static_docs = parse_doxygen_output(f"{project_path}/doxygen_output")
-    call_graph = CallGraphManager()
-    call_graph.build_call_graph(f"{project_path}/doxygen_output")
-    parsed_data, relationships = parse_doxygen_output(f"{project_path}/doxygen_output")
+    
+    doxygen_output_path = Path(f"{project_path}/doxygen_output")
+    parsed_data, relationships = parse_doxygen_output(doxygen_output_path)
     call_graph = CallGraphManager(parsed_data, relationships)
-    
+    call_graph.build_call_graph()
+
+    split_code = load_and_split_project(project_path)
     embed_model= OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
     source_code_vdb_mgr = GenVectorStore(embed_model)
     source_code_vdb_mgr.create_vector_store(split_code)
@@ -50,7 +52,7 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     return query_result
 
 if __name__ == "__main__":
-    project_path = "D:\sql\openGauss-server"
+    project_path = r"D:\sql\openGauss-server"
     user_query = "Explain the main function and its key dependencies"
     
     answer = analyze_cpp_project(project_path, user_query)

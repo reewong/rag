@@ -6,16 +6,17 @@ class CallGraphManager:
         self.call_graph = nx.DiGraph()
         self.cpp_parser = tree_sitter.Parser()
         self.cpp_parser.set_language(tree_sitter.Language('path/to/tree-sitter-cpp', 'cpp'))
-        self.build_call_graph(parsed_data, relationships)
+        self.relationships = relationships
+        self.parsed_data = parsed_data
 
-    def build_call_graph(self, parsed_data: Dict, relationships: List[Tuple[str, str, str]]):
+    def build_call_graph(self):
              # Build initial graph from relationships
-        for from_entity, rel_type, to_entity in relationships:
+        for from_entity, rel_type, to_entity in self.relationships:
             if rel_type == 'CALLS':
                 self.call_graph.add_edge(from_entity, to_entity)
         
         # Process function bodies for more detailed analysis
-        self._process_function_bodies(parsed_data['functions'])
+        self._process_function_bodies(self.parsed_data['functions'])
 
     def _process_function_bodies(self, functions: Dict):
         for func_name, func_data in functions.items():

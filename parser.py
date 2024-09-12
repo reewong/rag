@@ -97,53 +97,45 @@ def extract_declaration(elem) -> str:
 
 import os
 import re
-import subprocess
 
-def run_cmake_trace(cmake_path):
-    result = subprocess.run(['cmake', '--trace-expand', cmake_path], 
-                            capture_output=True, text=True)
-    return result.stdout
-
-def parse_cmake_trace(trace_output):
-    modules = {}
-    current_file = ""
-    
-    for line in trace_output.split('\n'):
-        file_match = re.search(r'CMakeLists\.txt:(\d+)\s*\((.*?)\)', line)
-        if file_match:
-            current_file = os.path.dirname(file_match.group(2))
+def parse_cmakelists(file_path):
+    modules = set()
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+        content = file.read()
         
-        if current_file not in modules:
-            modules[current_file] = set()
+        # Find add_library and add_executable
+        modules.update(re.findall(r'add_library\s*\(([\w_-]+)', content))
+        modules.update(re.findall(r'add_executable\s*\(([\w_-]+)', content))
         
-        if 'add_library' in line or 'add_executable' in line:
-            match = re.search(r'add_\w+\s*\(([\w_-]+)', line)
-            if match:
-                modules[current_file].add(match.group(1))
-        
-        if 'add_subdirectory' in line:
-            match = re.search(r'add_subdirectory\s*\(([\w_-]+)', line)
-            if match:
-                modules[current_file].add(f"subdir:{match.group(1)}")
+        # Find add_subdirectory
+        subdirs = re.findall(r'add_subdirectory\s*\(([\w_-]+)', content)
+        modules.update(f"subdir:{subdir}" for subdir in subdirs)
     
     return modules
 
-def extract_modules(root_dir):
-    cmake_trace = run_cmake_trace(root_dir)
-    return parse_cmake_trace(cmake_trace)
-
 def get_basic_structure_by_cmake(root_directory):
-    module_structure = extract_modules(root_directory)
+    cmake_structure = {}
+    
+    for root, dirs, files in os.walk(root_directory):
+        if 'CMakeLists.txt' in files:
+            relative_path = os.path.relpath(root, root_directory)
+            cmake_file = os.path.join(root, 'CMakeLists.txt')
+            modules = parse_cmakelists(cmake_file)
+            if modules:
+                cmake_structure[relative_path] = modules
+    
     cmake_structure_str = ''
-    for directory, modules in module_structure.items():
+    for directory, modules in cmake_structure.items():
         cmake_structure_str += f"Directory: {directory}\n"
-        cmake_structure_str +="Modules:\n"
+        cmake_structure_str += "Modules:\n"
         for module in modules:
             if module.startswith("subdir:"):
-                cmake_structure_str += f"  - Subdirectory: {module[7:]}"
+                cmake_structure_str += f"  - Subdirectory: {module[7:]}\n"
             else:
-                cmake_structure_str += f"  - {module}"
-    return cmake_structure_str
+                cmake_structure_str += f"  - {module}\n"
+        cmake_structure_str += "\n"
+    
+    return cmake_structure_str.strip()
 
 
 import os

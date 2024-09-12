@@ -2,14 +2,13 @@ from typing import List
 import numpy as np
 from neo4j import GraphDatabase
 from neo4j_manager import Neo4jManager
-from langchain.chains import LLMChain
+# from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from call_graph_manager import CallGraphManager
+# from call_graph_manager import CallGraphManager
 from typing import List, Dict, Set, Tuple
 from langchain_core.output_parsers import StrOutputParser
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from retriever import CodeRetriever
+# from langchain.chains import create_retrieval_chain
+# from langchain.chains.combine_documents import create_stuff_documents_chain
 decomposition_prompt = PromptTemplate(
     input_variables=["question"],
     template="Break down this complex question into simpler sub-questions:\n{question}\nSub-questions:"
@@ -19,7 +18,7 @@ class Query_Processor:
         self.llm = llm
         self.gragh_db_mgr = gragh_db_mgr
         self.source_mgr = source_code_manager(source_code_store_mgr)
-        self.retriever = CodeRetriever(source_code_store_mgr.get_vector_store()) 
+        self.retriever = source_code_store_mgr.get_retriever() 
         self.call_graph_mgr = call_gragh_mgr
         self.parser = StrOutputParser()
         self.directory_structure = directory_structure
@@ -171,8 +170,6 @@ Relevant Code Snippets:
                 info += f"  - {func}\n"
         return info           
 import tree_sitter    
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
 class source_code_manager:
     def __init__(self, source_db_mgr):        
         self.cpp_parser = tree_sitter.Parser()
