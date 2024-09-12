@@ -50,7 +50,7 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     return query_result
 
 if __name__ == "__main__":
-    project_path = "/path/to/cpp/project"
+    project_path = "D:\sql\openGauss-server"
     user_query = "Explain the main function and its key dependencies"
     
     answer = analyze_cpp_project(project_path, user_query)

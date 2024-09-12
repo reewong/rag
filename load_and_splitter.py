@@ -1,7 +1,7 @@
 from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
 from langchain_community.document_loaders.generic import GenericLoader
 from langchain_community.document_loaders.parsers import LanguageParser
-def load_and_split(repo_path):
+def load_and_split_project(repo_path):
     loader = GenericLoader.from_filesystem(
         repo_path,
         glob="**/*",
