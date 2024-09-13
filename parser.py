@@ -11,89 +11,90 @@ def parse_doxygen_output(output_dir: Path) -> Tuple[Dict, List[Tuple[str, str, s
     relationships = []
 
     for xml_file in output_dir.glob('*.xml'):
-        tree = ET.parse(xml_file)
-        root = tree.getroot()
+        try:
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
 
-        for compound in root.findall('compounddef'):
-            kind = compound.get('kind')
-            if kind in ['class', 'struct']:
-                parse_class(compound, parsed_data, relationships)
-            elif kind == 'namespace':
-                parse_namespace(compound, parsed_data, relationships)
+            for compound in root.findall('compounddef'):
+                kind = compound.get('kind')
+                if kind in ['class', 'struct']:
+                    parse_class(compound, parsed_data, relationships)
+                elif kind == 'namespace':
+                    parse_namespace(compound, parsed_data, relationships)
+                elif kind == 'file':
+                    parse_file(compound, parsed_data, relationships)
+
+        except ET.ParseError as e:
+            print(f"Error parsing {xml_file}: {e}")
+            continue
 
     return parsed_data, relationships
+
 def parse_class(class_elem, parsed_data: Dict, relationships: List):
     class_name = class_elem.find('compoundname').text
     parsed_data['classes'][class_name] = {
-        'details': extract_details(class_elem),
-        'file': class_elem.find('location').get('file'),
-        'line': class_elem.find('location').get('line'),
-        'declaration': extract_declaration(class_elem)
+        'methods': [],
+        'attributes': []
     }
 
-    # Extract inheritance relationships
-    for base_class in class_elem.findall('.//basecompoundref'):
-        relationships.append((class_name, 'INHERITS_FROM', base_class.text))
-
-    # Extract member functions
-    for member in class_elem.findall('sectiondef/memberdef[@kind="function"]'):
-        function_name = f"{class_name}::{member.find('name').text}"
-        parsed_data['functions'][function_name] = {
-            'details': extract_details(member),
-            'file': member.find('location').get('file'),
-            'line': member.find('location').get('line'),
-            'declaration': extract_declaration(member)
-        }
-        relationships.append((class_name, 'HAS_METHOD', function_name))
+    for section in class_elem.findall('sectiondef'):
+        for member in section.findall('memberdef'):
+            member_kind = member.get('kind')
+            member_name = member.find('name').text
+            if member_kind == 'function':
+                parsed_data['classes'][class_name]['methods'].append(member_name)
+                parse_function(f"{class_name}::{member_name}", member, parsed_data, relationships)
+            elif member_kind == 'variable':
+                parsed_data['classes'][class_name]['attributes'].append(member_name)
 
 def parse_namespace(namespace_elem, parsed_data: Dict, relationships: List):
     namespace_name = namespace_elem.find('compoundname').text
     parsed_data['namespaces'][namespace_name] = {
-        'details': extract_details(namespace_elem),
-        'file': namespace_elem.find('location').get('file'),
-        'line': namespace_elem.find('location').get('line')
+        'functions': [],
+        'classes': []
     }
 
-    # Extract namespace members (classes, functions)
-    for member in namespace_elem.findall('innerclass'):
-        class_name = member.text
-        relationships.append((namespace_name, 'CONTAINS', class_name))
+    for inner_class in namespace_elem.findall('innerclass'):
+        class_name = inner_class.text
+        parsed_data['namespaces'][namespace_name]['classes'].append(class_name)
 
-    for member in namespace_elem.findall('sectiondef/memberdef[@kind="function"]'):
-        function_name = f"{namespace_name}::{member.find('name').text}"
-        parsed_data['functions'][function_name] = {
-            'details': extract_details(member),
-            'file': member.find('location').get('file'),
-            'line': member.find('location').get('line'),
-            'declaration': extract_declaration(member)
-        }
-        relationships.append((namespace_name, 'CONTAINS', function_name))
+    for section in namespace_elem.findall('sectiondef'):
+        for member in section.findall('memberdef'):
+            if member.get('kind') == 'function':
+                function_name = member.find('name').text
+                full_function_name = f"{namespace_name}::{function_name}"
+                parsed_data['namespaces'][namespace_name]['functions'].append(full_function_name)
+                parse_function(full_function_name, member, parsed_data, relationships)
 
-def extract_details(elem) -> str:
-    brief = elem.find('briefdescription')
-    detailed = elem.find('detaileddescription')
-    
-    details = []
-    if brief is not None and brief.text:
-        details.append(brief.text.strip())
-    if detailed is not None:
-        for para in detailed.findall('.//para'):
-            if para.text:
-                details.append(para.text.strip())
-    
-    return "\n".join(details) if details else "No description available."
+def parse_file(file_elem, parsed_data: Dict, relationships: List):
+    for section in file_elem.findall('sectiondef'):
+        for member in section.findall('memberdef'):
+            if member.get('kind') == 'function':
+                function_name = member.find('name').text
+                parse_function(function_name, member, parsed_data, relationships)
 
-def extract_declaration(elem) -> str:
-    declaration = ""
-    definition = elem.find('definition')
-    if definition is not None and definition.text:
-        declaration += definition.text
-    
-    argsstring = elem.find('argsstring')
-    if argsstring is not None and argsstring.text:
-        declaration += argsstring.text
-    
-    return declaration.strip()
+def parse_function(function_name: str, function_elem, parsed_data: Dict, relationships: List):
+    parsed_data['functions'][function_name] = {
+        'params': [],
+        'return_type': function_elem.find('type').text
+    }
+
+    for param in function_elem.findall('param'):
+        param_name = param.find('declname')
+        param_type = param.find('type')
+        if param_name is not None and param_type is not None:
+            parsed_data['functions'][function_name]['params'].append({
+                'name': param_name.text,
+                'type': param_type.text
+            })
+
+    for references in function_elem.findall('references'):
+        ref_name = references.text
+        relationships.append((function_name, 'CALLS', ref_name))
+
+    for referencedby in function_elem.findall('referencedby'):
+        ref_name = referencedby.text
+        relationships.append((ref_name, 'CALLS', function_name))
 
 import os
 import re

@@ -41,18 +41,19 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
 
     # Populate graph database
     graph_db_mgr = Neo4jManager(config.NEO4J_URI, config.NEO4J_USER, config.NEO4J_PASSWORD, llm)
-    graph_db_mgr.populate_graph_database(parsed_static_docs)
+    graph_db_mgr.populate_graph_database(parsed_data, relationships)
     
     # Process the query
     query_processor = Query_Processor(llm, graph_db_mgr, source_code_vdb_mgr, call_graph, directory_structure, cmake_module_structure)
     query_result = query_processor.process_query(query)    
     
     graph_db_mgr.close()
-    
+
     return query_result
 
 if __name__ == "__main__":
     project_path = r"D:\sql\openGauss-server"
+    # project_path = r"/home/code/sql/openGauss-server"
     user_query = "Explain the main function and its key dependencies"
     
     answer = analyze_cpp_project(project_path, user_query)
