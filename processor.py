@@ -57,11 +57,14 @@ class Query_Processor:
             
             # Fetch code snippets for main and related functions
             code_snippets = self._get_code_snippets([main_function] + list(related_functions))
+        else:
+            related_functions = set()
+            code_snippets = {}
         # Construct prompt with call graph information
         prompt = self._construct_prompt(question, relevant_docs, graph_info, code_snippets, main_function, related_functions)
         
-        # Generate answer using the updated prompt
-        answer = self.qa_system.answer_question(prompt)
+        chain = prompt | self.llm | self.parser
+        answer = chain.invoke(prompt)
         
         return answer
 

@@ -6,7 +6,8 @@ def parse_doxygen_output(output_dir: Path) -> Tuple[Dict, List[Tuple[str, str, s
     parsed_data = {
         "classes": {},
         "functions": {},
-        "namespaces": {}
+        "namespaces": {},
+        "variables": {}  # 新增变量类型
     }
     relationships = []
 
@@ -32,9 +33,12 @@ def parse_doxygen_output(output_dir: Path) -> Tuple[Dict, List[Tuple[str, str, s
 
 def parse_class(class_elem, parsed_data: Dict, relationships: List):
     class_name = class_elem.find('compoundname').text
+    class_details = class_elem.find('briefdescription').text or ""
+    class_details += "\n" + (class_elem.find('detaileddescription').text or "")
     parsed_data['classes'][class_name] = {
         'methods': [],
-        'attributes': []
+        'attributes': [],
+        'details': class_details.strip()
     }
 
     for section in class_elem.findall('sectiondef'):
@@ -49,9 +53,12 @@ def parse_class(class_elem, parsed_data: Dict, relationships: List):
 
 def parse_namespace(namespace_elem, parsed_data: Dict, relationships: List):
     namespace_name = namespace_elem.find('compoundname').text
+    namespace_details = namespace_elem.find('briefdescription').text or ""
+    namespace_details += "\n" + (namespace_elem.find('detaileddescription').text or "")
     parsed_data['namespaces'][namespace_name] = {
         'functions': [],
-        'classes': []
+        'classes': [],
+        'details': namespace_details.strip()
     }
 
     for inner_class in namespace_elem.findall('innerclass'):
@@ -70,37 +77,31 @@ def parse_file(file_elem, parsed_data: Dict, relationships: List):
     for section in file_elem.findall('sectiondef'):
         for member in section.findall('memberdef'):
             if member.get('kind') == 'function':
-                function_name = member.find('name').text
-                parse_function(function_name, member, parsed_data, relationships)
-
-# def parse_function(function_name: str, function_elem, parsed_data: Dict, relationships: List):
-#     parsed_data['functions'][function_name] = {
-#         'params': [],
-#         'return_type': function_elem.find('type').text
-#     }
-
-#     for param in function_elem.findall('param'):
-#         param_name = param.find('declname')
-#         param_type = param.find('type')
-#         if param_name is not None and param_type is not None:
-#             parsed_data['functions'][function_name]['params'].append({
-#                 'name': param_name.text,
-#                 'type': param_type.text
-#             })
-
-#     for references in function_elem.findall('references'):
-#         ref_name = references.text
-#         relationships.append((function_name, 'CALLS', ref_name))
-
-#     for referencedby in function_elem.findall('referencedby'):
-#         ref_name = referencedby.text
-#         relationships.append((ref_name, 'CALLS', function_name))
-def parse_function(function_name: str, function_elem, parsed_data: Dict, relationships: List):
-    parsed_data['functions'][function_name] = {
+                parse_function(member, parsed_data, relationships)
+            elif member.get('kind') == 'variable':
+                parse_variable(member, parsed_data, relationships)
+def parse_variable(var_elem, parsed_data: Dict, relationships: List):
+    var_name = var_elem.find('name').text
+    var_type = var_elem.find('type').text
+    var_details = var_elem.find('briefdescription').text or ""
+    var_details += "\n" + (var_elem.find('detaileddescription').text or "")
+    
+    parsed_data['variables'][var_name] = {
+        'type': var_type,
+        'details': var_details.strip()
+    }
+def parse_function(function_elem, parsed_data: Dict, relationships: List):
+    function_name = function_elem.find('name').text
+    function_details = function_elem.find('briefdescription').text or ""
+    function_details += "\n" + (function_elem.find('detaileddescription').text or "")    parsed_data['functions'][function_name] = {
         'params': [],
         'return_type': function_elem.find('type').text
     }
-
+    parsed_data['functions'][function_name] = {
+        'params': [],
+        'return_type': function_elem.find('type').text,
+        'details': function_details.strip()
+     }
     # Parse parameters
     for param in function_elem.findall('param'):
         param_name = param.find('declname')
@@ -136,32 +137,6 @@ def parse_function(function_name: str, function_elem, parsed_data: Dict, relatio
             ref_name = referencedby.text
             relationships.append((ref_name, 'CALLS', function_name))
 
-    # Parse the function body for additional call detection
-#     location = function_elem.find('location')
-#     if location is not None:
-#         body_file = location.get('bodyfile')
-#         body_start = int(location.get('bodystart', 0))
-#         body_end = int(location.get('bodyend', 0))
-#         if body_file and body_start and body_end:
-#             additional_calls = parse_function_body(body_file, body_start, body_end)
-#             for call in additional_calls:
-#                 relationships.append((function_name, 'CALLS', call))
-
-# def parse_function_body(file_path, start_line, end_line):
-#     calls = set()
-#     try:
-#         with open(file_path, 'r') as file:
-#             lines = file.readlines()[start_line-1:end_line]
-#             content = ''.join(lines)
-#             # Simple regex to find potential function calls
-#             # This is a basic approach and might need refinement
-#             potential_calls = re.findall(r'\b(\w+)\s*\(', content)
-#             for call in potential_calls:
-#                 if call not in ['if', 'for', 'while', 'switch']:  # Exclude common keywords
-#                     calls.add(call)
-#     except Exception as e:
-#         print(f"Error parsing function body in {file_path}: {e}")
-#     return calls
 
 import os
 import re
