@@ -9,7 +9,11 @@ from langchain_community.llms import Ollama
 from langchain_community.embeddings import OllamaEmbeddings
 from pathlib import Path
 import config
-
+def get_project_version(project_path):
+    # 这个函数应该返回项目的当前版本
+    # 可以从版本控制系统（如 git）获取，或者从项目的某个配置文件中读取
+    # 这里只是一个示例实现
+    return "1.0.0"  # 替换为实际的版本获取逻辑
 def analyze_cpp_project(project_path: str, query: str) -> str:
     llm = Ollama(
         # model="mistral-nemo:12b-instruct-2407-q8_0", 
@@ -39,10 +43,10 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     store_path = f"{project_path}/vector_store"
     source_code_vdb_mgr.get_or_create_vector_store(split_code, store_path)
 
-
     # Populate graph database
-    graph_db_mgr = Neo4jManager(config.NEO4J_URI, config.NEO4J_USER, config.NEO4J_PASSWORD, llm)
-    graph_db_mgr.populate_graph_database(parsed_data, relationships)
+    current_version = get_project_version(project_path)
+    graph_db_mgr = Neo4jManager(config.NEO4J_URI, config.NEO4J_USERNAME, config.NEO4J_PASSWORD, llm)
+    graph_db_mgr.populate_graph_database(parsed_data, relationships, current_version)
     
     # Process the query
     query_processor = Query_Processor(llm, graph_db_mgr, source_code_vdb_mgr, call_graph, directory_structure, cmake_module_structure)
@@ -55,7 +59,7 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
 if __name__ == "__main__":
     project_path = r"D:\sql\openGauss-server"
     # project_path = r"/home/code/sql/openGauss-server"
-    user_query = "Explain the main function and its key dependencies"
+    user_query = "讲讲代码仓中的回放过程"
     
     answer = analyze_cpp_project(project_path, user_query)
     print(answer)

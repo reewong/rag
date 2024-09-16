@@ -7,7 +7,7 @@ def parse_doxygen_output(output_dir: Path) -> Tuple[Dict, List[Tuple[str, str, s
         "classes": {},
         "functions": {},
         "namespaces": {},
-        "variables": {}  # 新增变量类型
+        "variables": {}
     }
     relationships = []
 
@@ -47,7 +47,7 @@ def parse_class(class_elem, parsed_data: Dict, relationships: List):
             member_name = member.find('name').text
             if member_kind == 'function':
                 parsed_data['classes'][class_name]['methods'].append(member_name)
-                parse_function(f"{class_name}::{member_name}", member, parsed_data, relationships)
+                parse_function(member, parsed_data, relationships, f"{class_name}::{member_name}")
             elif member_kind == 'variable':
                 parsed_data['classes'][class_name]['attributes'].append(member_name)
 
@@ -71,7 +71,7 @@ def parse_namespace(namespace_elem, parsed_data: Dict, relationships: List):
                 function_name = member.find('name').text
                 full_function_name = f"{namespace_name}::{function_name}"
                 parsed_data['namespaces'][namespace_name]['functions'].append(full_function_name)
-                parse_function(full_function_name, member, parsed_data, relationships)
+                parse_function(member, parsed_data, relationships, full_function_name)
 
 def parse_file(file_elem, parsed_data: Dict, relationships: List):
     for section in file_elem.findall('sectiondef'):
@@ -80,6 +80,7 @@ def parse_file(file_elem, parsed_data: Dict, relationships: List):
                 parse_function(member, parsed_data, relationships)
             elif member.get('kind') == 'variable':
                 parse_variable(member, parsed_data, relationships)
+
 def parse_variable(var_elem, parsed_data: Dict, relationships: List):
     var_name = var_elem.find('name').text
     var_type = var_elem.find('type').text
@@ -90,8 +91,9 @@ def parse_variable(var_elem, parsed_data: Dict, relationships: List):
         'type': var_type,
         'details': var_details.strip()
     }
-def parse_function(function_elem, parsed_data: Dict, relationships: List):
-    function_name = function_elem.find('name').text
+
+def parse_function(function_elem, parsed_data: Dict, relationships: List, full_function_name: str = None):
+    function_name = full_function_name or function_elem.find('name').text
     function_details = function_elem.find('briefdescription').text or ""
     function_details += "\n" + (function_elem.find('detaileddescription').text or "")
     parsed_data['functions'][function_name] = {
@@ -99,7 +101,7 @@ def parse_function(function_elem, parsed_data: Dict, relationships: List):
         'return_type': function_elem.find('type').text,
         'details': function_details.strip()
      }
-    # Parse parameters
+    
     for param in function_elem.findall('param'):
         param_name = param.find('declname')
         param_type = param.find('type')
@@ -109,31 +111,25 @@ def parse_function(function_elem, parsed_data: Dict, relationships: List):
                 'type': param_type.text
             })
 
-    # Helper function to check if a reference is likely a function
     def is_likely_function(ref_elem):
         if ref_elem.get('kindref') == 'member':
             return True
         ref_name = ref_elem.text
-        # Check if the reference name is in our parsed functions
         if ref_name in parsed_data['functions']:
             return True
-        # Check for patterns that suggest a function (e.g., name followed by parentheses)
         if '(' in ref_name and ')' in ref_name:
             return True
         return False
 
-    # Parse outgoing calls (references)
     for references in function_elem.findall('references'):
         if is_likely_function(references):
             ref_name = references.text
             relationships.append((function_name, 'CALLS', ref_name))
 
-    # Parse incoming calls (referencedby)
     for referencedby in function_elem.findall('referencedby'):
         if is_likely_function(referencedby):
             ref_name = referencedby.text
             relationships.append((ref_name, 'CALLS', function_name))
-
 
 import os
 import re

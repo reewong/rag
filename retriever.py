@@ -83,8 +83,8 @@
 #         print(f"Added {len(documents)} documents to vector store")
 import os
 from typing import List, Dict, Optional
-from langchain_community.vectorstores import Chroma
 from langchain.docstore.document import Document
+from langchain_chroma import Chroma
 
 class GenVectorStore:
     def __init__(self, embedding):

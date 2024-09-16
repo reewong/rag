@@ -11,11 +11,32 @@ class Neo4jManager:
     def close(self):
         self.driver.close()
 
-    def populate_graph_database(self, parsed_data: Dict, relationships: List[Tuple[str, str, str]]):
+    def populate_graph_database(self, parsed_data, relationships, current_version):
         with self.driver.session() as session:
+            if not self._is_update_needed(session, current_version):
+                print("Database is up to date")
+                return
+
+            # Clear existing data
+            session.run("MATCH (n) DETACH DELETE n")
+
+            # Add new data
             self._add_entities(session, parsed_data)
             self._add_relationships(session, relationships)
 
+            # Update version
+            self._update_version(session, current_version)
+
+            print(f"Database updated to version {current_version}")
+    def _is_update_needed(self, session, current_version):
+        result = session.run("MATCH (v:Version) RETURN v.number AS version")
+        db_version = result.single()
+        return db_version is None or db_version['version'] != current_version
+    def _update_version(self, session, version):
+        session.run(
+            "MERGE (v:Version) SET v.number = $version",
+            version=version
+        )
     def _add_entities(self, session, parsed_data: Dict):
         for entity_type, entities in parsed_data.items():
             for entity_name, entity_data in entities.items():
