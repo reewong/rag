@@ -32,11 +32,12 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     parsed_data, relationships = parse_doxygen_output(doxygen_output_path)
     call_graph = CallGraphManager(parsed_data, relationships)
     call_graph.build_call_graph()
-
+    call_graph.get_related_functions('StartupXLOG', 1)
     split_code = load_and_split_project(project_path)
     embed_model= OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
     source_code_vdb_mgr = GenVectorStore(embed_model)
-    source_code_vdb_mgr.create_vector_store(split_code)
+    store_path = f"{project_path}/vector_store"
+    source_code_vdb_mgr.get_or_create_vector_store(split_code, store_path)
 
 
     # Populate graph database

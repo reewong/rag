@@ -73,12 +73,35 @@ def parse_file(file_elem, parsed_data: Dict, relationships: List):
                 function_name = member.find('name').text
                 parse_function(function_name, member, parsed_data, relationships)
 
+# def parse_function(function_name: str, function_elem, parsed_data: Dict, relationships: List):
+#     parsed_data['functions'][function_name] = {
+#         'params': [],
+#         'return_type': function_elem.find('type').text
+#     }
+
+#     for param in function_elem.findall('param'):
+#         param_name = param.find('declname')
+#         param_type = param.find('type')
+#         if param_name is not None and param_type is not None:
+#             parsed_data['functions'][function_name]['params'].append({
+#                 'name': param_name.text,
+#                 'type': param_type.text
+#             })
+
+#     for references in function_elem.findall('references'):
+#         ref_name = references.text
+#         relationships.append((function_name, 'CALLS', ref_name))
+
+#     for referencedby in function_elem.findall('referencedby'):
+#         ref_name = referencedby.text
+#         relationships.append((ref_name, 'CALLS', function_name))
 def parse_function(function_name: str, function_elem, parsed_data: Dict, relationships: List):
     parsed_data['functions'][function_name] = {
         'params': [],
         'return_type': function_elem.find('type').text
     }
 
+    # Parse parameters
     for param in function_elem.findall('param'):
         param_name = param.find('declname')
         param_type = param.find('type')
@@ -88,13 +111,57 @@ def parse_function(function_name: str, function_elem, parsed_data: Dict, relatio
                 'type': param_type.text
             })
 
-    for references in function_elem.findall('references'):
-        ref_name = references.text
-        relationships.append((function_name, 'CALLS', ref_name))
+    # Helper function to check if a reference is likely a function
+    def is_likely_function(ref_elem):
+        if ref_elem.get('kindref') == 'member':
+            return True
+        ref_name = ref_elem.text
+        # Check if the reference name is in our parsed functions
+        if ref_name in parsed_data['functions']:
+            return True
+        # Check for patterns that suggest a function (e.g., name followed by parentheses)
+        if '(' in ref_name and ')' in ref_name:
+            return True
+        return False
 
+    # Parse outgoing calls (references)
+    for references in function_elem.findall('references'):
+        if is_likely_function(references):
+            ref_name = references.text
+            relationships.append((function_name, 'CALLS', ref_name))
+
+    # Parse incoming calls (referencedby)
     for referencedby in function_elem.findall('referencedby'):
-        ref_name = referencedby.text
-        relationships.append((ref_name, 'CALLS', function_name))
+        if is_likely_function(referencedby):
+            ref_name = referencedby.text
+            relationships.append((ref_name, 'CALLS', function_name))
+
+    # Parse the function body for additional call detection
+#     location = function_elem.find('location')
+#     if location is not None:
+#         body_file = location.get('bodyfile')
+#         body_start = int(location.get('bodystart', 0))
+#         body_end = int(location.get('bodyend', 0))
+#         if body_file and body_start and body_end:
+#             additional_calls = parse_function_body(body_file, body_start, body_end)
+#             for call in additional_calls:
+#                 relationships.append((function_name, 'CALLS', call))
+
+# def parse_function_body(file_path, start_line, end_line):
+#     calls = set()
+#     try:
+#         with open(file_path, 'r') as file:
+#             lines = file.readlines()[start_line-1:end_line]
+#             content = ''.join(lines)
+#             # Simple regex to find potential function calls
+#             # This is a basic approach and might need refinement
+#             potential_calls = re.findall(r'\b(\w+)\s*\(', content)
+#             for call in potential_calls:
+#                 if call not in ['if', 'for', 'while', 'switch']:  # Exclude common keywords
+#                     calls.add(call)
+#     except Exception as e:
+#         print(f"Error parsing function body in {file_path}: {e}")
+#     return calls
 
 import os
 import re
@@ -118,6 +185,9 @@ def get_basic_structure_by_cmake(root_directory):
     cmake_structure = {}
     
     for root, dirs, files in os.walk(root_directory):
+        if root == f"{root_directory}/doxygen_output":
+            continue
+        # print(files)
         if 'CMakeLists.txt' in files:
             relative_path = os.path.relpath(root, root_directory)
             cmake_file = os.path.join(root, 'CMakeLists.txt')

@@ -27,7 +27,8 @@ class CallGraphManager:
         for from_entity, rel_type, to_entity in self.relationships:
             if rel_type == 'CALLS':
                 self.call_graph.add_edge(from_entity, to_entity)
-
+    # def print_call_graph(self):
+    #     print(self.call_graph)
     # def _process_function_bodies(self, functions: Dict):
     #     for func_name, func_data in functions.items():
     #         func_body = func_data.get('details', '')  # Assuming 'details' contains the function body
@@ -57,6 +58,7 @@ class CallGraphManager:
         called_functions = set(self.call_graph.successors(function_name))
         for func in list(called_functions):
             called_functions.update(self.get_called_functions(func, depth - 1))
+        print(called_functions)
         return called_functions
 
     def get_calling_functions(self, function_name: str, depth: int = 1) -> Set[str]:
@@ -65,6 +67,7 @@ class CallGraphManager:
         calling_functions = set(self.call_graph.predecessors(function_name))
         for func in list(calling_functions):
             calling_functions.update(self.get_calling_functions(func, depth - 1))
+        print(calling_functions)
         return calling_functions
     def get_related_functions(self, main_function: str, max_depth: int = 2) -> Set[str]:
         called_functions = self.get_called_functions(main_function, max_depth)
