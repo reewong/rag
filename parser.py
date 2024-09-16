@@ -93,10 +93,7 @@ def parse_variable(var_elem, parsed_data: Dict, relationships: List):
 def parse_function(function_elem, parsed_data: Dict, relationships: List):
     function_name = function_elem.find('name').text
     function_details = function_elem.find('briefdescription').text or ""
-    function_details += "\n" + (function_elem.find('detaileddescription').text or "")    parsed_data['functions'][function_name] = {
-        'params': [],
-        'return_type': function_elem.find('type').text
-    }
+    function_details += "\n" + (function_elem.find('detaileddescription').text or "")
     parsed_data['functions'][function_name] = {
         'params': [],
         'return_type': function_elem.find('type').text,
