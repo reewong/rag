@@ -11,7 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 # from langchain.chains.combine_documents import create_stuff_documents_chain
 decomposition_prompt = PromptTemplate(
     input_variables=["question"],
-    template="Break down this complex question into simpler sub-questions:\n{question}\nSub-questions:"
+    template="为了全面而透彻的理解这个问题，并结合一般人类读代码的习惯，可以将以下问题分为如下几个子问题:\n{question}\n 子问题:"
 )
 class Query_Processor:
     def __init__(self, llm, gragh_db_mgr, source_code_store_mgr, call_gragh_mgr, directory_structure, cmake_module_structure) -> None:
@@ -119,38 +119,36 @@ Relevant Code Snippets:
     def _construct_prompt(self, question: str, relevant_docs: List[Dict], graph_info: str, 
                             code_snippets: Dict[str, str], main_function: str, related_functions: Set[str]) -> str:
         prompt = f"""
-        User Query: {question}
+        用户问题: {question}
 
-        Main Function: {main_function}
+        主函数: {main_function}
 
-        Related Functions:
+        相关函数:
         {', '.join(related_functions)}
 
-        Call Graph Information:
+        调用图信息:
         {self._format_call_graph_info(main_function, related_functions)}
 
-        Code Snippets:
+        代码片段:
         """
         for func, snippet in code_snippets.items():
             prompt += f"\nFunction: {func}\n{snippet}\n"
 
         prompt += f"""
-        basic project structure:
+        项目基本结构:
         {self.directory_structure}
         {self.cmake_module_structure}
-        Additional Context:
+        其余信息:
         {self._format_relevant_docs(relevant_docs)}
         {graph_info}
 
-        Instructions:
-        1. Analyze the main function and its related functions based on the call graph.
-        2. Explain the purpose and functionality of the main function.
-        3. Describe how the related functions contribute to or interact with the main function.
-        4. If relevant, discuss the flow of data or control through these functions.
-        5. Reference specific parts of the code snippets to support your explanation.
-        6. If you need more information about any function or its context, say so explicitly.
-
-        Please provide a comprehensive answer based on this information.
+        指令：
+        根据调用图分析主函数及其相关函数。
+        解释主函数的目的和功能。
+        描述相关函数如何为主函数做出贡献或与主函数交互。
+        如果相关，讨论数据或控制流通过这些函数的方式。
+        参考代码片段的特定部分以支持您的解释。
+        如果您需要有关任何功能或其上下文的更多信息，请明确说明。
         """
         print(prompt)
         return prompt
@@ -176,7 +174,7 @@ import tree_sitter
 class source_code_manager:
     def __init__(self, source_db_mgr):        
         self.cpp_parser = tree_sitter.Parser()
-        self.cpp_parser.set_language(tree_sitter.Language('path/to/tree-sitter-cpp', 'cpp')) # 替换为你的 tree-sitter-cpp 路径
+        self.cpp_parser.set_language(tree_sitter.Language(r'E:\tree-sitter-cpp\tree_sitter_cpp.dll', 'cpp')) # 替换为你的 tree-sitter-cpp 路径
         self.source_db_mgr = source_db_mgr
     def search_fucntion_def(self, function_name_to_search): 
         coarse_results = self.coarse_search(function_name_to_search)

@@ -1,13 +1,22 @@
 from neo4j import GraphDatabase
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple    
 from langchain_core.output_parsers import StrOutputParser
-
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 class Neo4jManager:
     def __init__(self, uri, user, password, llm):
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        try:
+            self.driver = GraphDatabase.driver(uri, auth=(user, password))
+            # 测试连接
+            with self.driver.session() as session:
+                session.run("RETURN 1")
+            logger.info("Successfully connected to Neo4j")
+        except Exception as e:
+            logger.error(f"Failed to connect to Neo4j: {e}")
+            raise
         self.llm = llm
         self.parser = StrOutputParser()
-
     def close(self):
         self.driver.close()
 
@@ -28,31 +37,39 @@ class Neo4jManager:
             self._update_version(session, current_version)
 
             print(f"Database updated to version {current_version}")
+
     def _is_update_needed(self, session, current_version):
         result = session.run("MATCH (v:Version) RETURN v.number AS version")
         db_version = result.single()
         return db_version is None or db_version['version'] != current_version
+
+    def _add_entities(self, session, parsed_data):
+        for entity_type, entities in parsed_data.items():
+            for entity_name, entity_data in entities.items():
+                if entity_name:  # 确保实体名不为空
+                    session.run(
+                        "CREATE (e:CodeEntity {name: $name, type: $type, details: $details})",
+                        name=entity_name, type=entity_type, details=str(entity_data)
+                    )
+                else:
+                    print(f"Skipping entity with null name of type {entity_type}")
+
+    def _add_relationships(self, session, relationships):
+        for from_entity, rel_type, to_entity in relationships:
+            if from_entity and to_entity:  # 确保两端的实体名都不为空
+                session.run(
+                    "MATCH (a:CodeEntity {name: $from_name}), (b:CodeEntity {name: $to_name}) "
+                    "CREATE (a)-[:RELATIONSHIP {type: $rel_type}]->(b)",
+                    from_name=from_entity, to_name=to_entity, rel_type=rel_type
+                )
+            else:
+                print(f"Skipping relationship {from_entity} -> {to_entity} of type {rel_type}")
+
     def _update_version(self, session, version):
         session.run(
             "MERGE (v:Version) SET v.number = $version",
             version=version
         )
-    def _add_entities(self, session, parsed_data: Dict):
-        for entity_type, entities in parsed_data.items():
-            for entity_name, entity_data in entities.items():
-                session.run(
-                    "MERGE (e:CodeEntity {name: $name, type: $type}) "
-                    "SET e.details = $details",
-                    name=entity_name, type=entity_type, details=entity_data.get('details', '')
-                )
-
-    def _add_relationships(self, session, relationships: List[Tuple[str, str, str]]):
-        for from_entity, relationship_type, to_entity in relationships:
-            session.run(
-                "MATCH (a:CodeEntity {name: $from_name}), (b:CodeEntity {name: $to_name}) "
-                "MERGE (a)-[r:$rel_type]->(b)",
-                from_name=from_entity, to_name=to_entity, rel_type=relationship_type
-            )
 
     def query_entity_definition(self, entity_name: str) -> Dict:
         with self.driver.session() as session:
