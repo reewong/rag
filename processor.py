@@ -7,6 +7,12 @@ from langchain.prompts import PromptTemplate
 # from call_graph_manager import CallGraphManager
 from typing import List, Dict, Set, Tuple
 from langchain_core.output_parsers import StrOutputParser
+from langchain.output_parsers import PydanticOutputParser
+import json
+from pydantic import BaseModel, Field
+
+class SubQuestions(BaseModel):
+    questions: List[str] = Field(description="A list of sub-questions")
 # from langchain.chains import create_retrieval_chain
 # from langchain.chains.combine_documents import create_stuff_documents_chain
 decomposition_prompt = PromptTemplate(
@@ -23,10 +29,33 @@ class Query_Processor:
         self.parser = StrOutputParser()
         self.directory_structure = directory_structure
         self.cmake_module_structure = cmake_module_structure
-    def decompose(self, question: str) -> list:
-        chain = decomposition_prompt | self.llm | self.parser
+        self.decomposition_parser = PydanticOutputParser(pydantic_object=SubQuestions)
+
+        self.decomposition_prompt = PromptTemplate(
+            template="为了全面而透彻的理解这个问题，并结合一般人类读代码的习惯，可以将以下问题划分几个简单的子问题. " 
+                     "请以JSON格式提供您的答案，使用'questions'键包含一个字符串列表。代表子问题的内容\n\n"
+                     "复杂问题：{question}\n\n"
+                     "在子问题中，请确保包含原问题的背景和上下文\n\n"
+                     "JSON输出：",
+            input_variables=["question"],
+            partial_variables={"format_instructions": self.decomposition_parser.get_format_instructions()}
+        )
+
+    def decompose(self, question: str) -> List[str]:
+        chain = self.decomposition_prompt | self.llm | self.parser
         result = chain.invoke(question)
-        return [q.strip() for q in result.split('\n') if q.strip()]
+
+        try:
+            parsed_output = self.decomposition_parser.parse(result)
+            if not parsed_output.questions:
+                raise ValueError("No sub-questions generated")
+            return parsed_output.questions
+        except json.JSONDecodeError:
+            print(f"Failed to parse LLM output as JSON: {result}")
+            return [question]  # 如果解析失败，返回原问题
+        except Exception as e:
+            print(f"Error in decomposing question: {e}")
+            return [question] 
     def _synthesize_answers(self, answers: List[str]) -> str:
         # Combine answers from sub-questions into a coherent response
         # This could be improved with more sophisticated NLP techniques
@@ -46,7 +75,7 @@ class Query_Processor:
             return self._answer_question(query)
         
     def _answer_question(self, question: str) -> str:
-        relevant_docs = self.retriever.get_relevant_documents(question)
+        relevant_docs = self.retriever.invoke(question)
         graph_info = self.gragh_db_mgr.query_graph_database(question, relevant_docs)
         
         # Identify the main function in question

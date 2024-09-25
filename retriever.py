@@ -107,8 +107,7 @@ class GenVectorStore:
                 self.vector_store.add_documents(batch)
             
             print(f"Processed batch {i//batch_size + 1}/{len(documents)//batch_size + 1}")
-
-        self.vector_store.persist()
+    
         print(f"Vector store created and saved to {store_path}")
 
     def load_vector_store(self, store_path: str) -> bool:

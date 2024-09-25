@@ -62,4 +62,4 @@ if __name__ == "__main__":
     user_query = "已知本代码仓是一个数据库内核的代码，基于代码仓代码片段，讲讲数据库redo过程"
     
     answer = analyze_cpp_project(project_path, user_query)
-    print(answer)
+    print(answer) 
