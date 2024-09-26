@@ -112,10 +112,11 @@ class Query_Processor:
             prompt += f"SourceFile: {doc.metadata}\n"
             prompt += f"Page content: {doc.page_content}\n"
 
-        prompt += f"""Given the following user question and relevant code snippets above, identify which function should be considered the main function for answering the user's question. Return only the name of the function.
+            prompt += f"""Given the following user question and relevant code snippets above, identify which function should be considered the main function for answering the user's question. Return the complete function name, including the namespace or class name if applicable, according to C++ syntax.
+
 User Question: {question}
-in other words, from the code snippets above, which function is most relevant to answering the user's question? Please 
-return only the function name.Then you may exlain your choice"""
+
+In other words, from the code snippets above, which function is most relevant to answering the user's question? Please return only the complete function name. Then you may explain your choice."""
 
         return prompt
 
@@ -202,7 +203,7 @@ class source_code_manager:
         self.source_db_mgr = source_db_mgr
     def search_fucntion_def(self, function_name_to_search): 
         coarse_results = self.coarse_search(function_name_to_search)
-        definition = self.precise_search([result['page_content'] for result in coarse_results])
+        definition = self.precise_search([result['page_content'] for result in coarse_results], function_name_to_search)
         return definition
     # 2. 解析 C++ 代码并提取函数定义
     def extract_function_definitions(self, code):

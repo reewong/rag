@@ -55,10 +55,13 @@ class CallGraphManager:
     def get_called_functions(self, function_name: str, depth: int = 1) -> Set[str]:
         if depth == 0:
             return set()
-        called_functions = set(self.call_graph.successors(function_name))
+        try:
+            called_functions = set(self.call_graph.successors(function_name))
+        except KeyError:
+            print(f"Function {function_name} not found in the call graph.")
+            return set()
         for func in list(called_functions):
             called_functions.update(self.get_called_functions(func, depth - 1))
-        print(called_functions)
         return called_functions
 
     def get_calling_functions(self, function_name: str, depth: int = 1) -> Set[str]:
