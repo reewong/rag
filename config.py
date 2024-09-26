@@ -1,10 +1,10 @@
 # Neo4j 数据库配置
-# NEO4J_URI = "bolt://localhost:7687"  # 替换为您的 Neo4j 服务器 URI
-# NEO4J_USER = "neo4j"  # 替换为您的 Neo4j 用户名
-# NEO4J_PASSWORD = "password"  # 替换为您的 Neo4j 密码
-NEO4J_URI="neo4j+s://fc8667a1.databases.neo4j.io"
-NEO4J_USERNAME="neo4j"
-NEO4J_PASSWORD="liC_71pKt41kOSY1VsS2jDKfrr8kjdg93lLkwsW6f34"
+NEO4J_URI = "neo4j://localhost:7687"  # 替换为您的 Neo4j 服务器 URI
+NEO4J_USERNAME = "neo4j"  # 替换为您的 Neo4j 用户名
+NEO4J_PASSWORD = "wr199394"  # 替换为您的 Neo4j 密码
+# NEO4J_URI="neo4j+s://fc8667a1.databases.neo4j.io"
+# NEO4J_USERNAME="neo4j"
+# NEO4J_PASSWORD="liC_71pKt41kOSY1VsS2jDKfrr8kjdg93lLkwsW6f34"
 
 # 项目配置
 PROJECT_PATH = "/path/to/cpp/project"  # 替换为您的 C++ 项目实际路径

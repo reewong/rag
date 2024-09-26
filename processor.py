@@ -15,10 +15,6 @@ class SubQuestions(BaseModel):
     questions: List[str] = Field(description="A list of sub-questions")
 # from langchain.chains import create_retrieval_chain
 # from langchain.chains.combine_documents import create_stuff_documents_chain
-decomposition_prompt = PromptTemplate(
-    input_variables=["question"],
-    template="为了全面而透彻的理解这个问题，并结合一般人类读代码的习惯，可以将以下问题分为如下几个子问题:\n{question}\n 子问题:"
-)
 class Query_Processor:
     def __init__(self, llm, gragh_db_mgr, source_code_store_mgr, call_gragh_mgr, directory_structure, cmake_module_structure) -> None:
         self.llm = llm
@@ -32,7 +28,9 @@ class Query_Processor:
         self.decomposition_parser = PydanticOutputParser(pydantic_object=SubQuestions)
 
         self.decomposition_prompt = PromptTemplate(
-            template="为了全面而透彻的理解这个问题，并结合一般人类读代码的习惯，可以将以下问题划分几个简单的子问题. " 
+            template="为了全面而透彻的理解这个问题，并结合一般人类读代码的习惯，可以将以下问题划分几个简单的子问题."
+                     "提示一下，如果是询问的是一个简单的函数等局部代码片段就可以解答的问题，就不需要划分子问题，如果问的是比较复杂的问题，按照问题涉及的过程,"
+                     "以你对背景的理解，把这个过程拆分为几步,每一步对应一个子问题" 
                      "请以JSON格式提供您的答案，使用'questions'键包含一个字符串列表。代表子问题的内容\n\n"
                      "复杂问题：{question}\n\n"
                      "在子问题中，请确保包含原问题的背景和上下文\n\n"
@@ -90,10 +88,10 @@ class Query_Processor:
             related_functions = set()
             code_snippets = {}
         # Construct prompt with call graph information
-        prompt = self._construct_prompt(question, relevant_docs, graph_info, code_snippets, main_function, related_functions)
-        
-        chain = prompt | self.llm | self.parser
-        answer = chain.invoke(prompt)
+        raw_prompt = self._construct_prompt(question, relevant_docs, graph_info, code_snippets, main_function, related_functions)
+        # prompt = PromptTemplate.from_template(raw_prompt)
+        # chain = prompt | self.llm | self.parser
+        answer = self.llm.invoke(raw_prompt)
         
         return answer
 
@@ -101,25 +99,23 @@ class Query_Processor:
         if not relevant_docs:
             return ""
         # Prepare the prompt for the LLM
-        prompt = self._prepare_main_function_prompt(question, relevant_docs)
-
-        chain = prompt | self.llm | self.parser
-        result = chain.invoke(prompt)
-        return result.strip()
+        raw_prompt = self._prepare_main_function_prompt(question, relevant_docs)
+        result = self.llm.invoke(raw_prompt)
+        lines = result.splitlines()
+        function_name = lines[0].strip() 
+        return function_name
 
     def _prepare_main_function_prompt(self, question: str, relevant_docs: List[Dict]) -> str:
-        prompt = f"""Given the following user question and relevant code snippets, identify which function should be considered the main function for answering the user's question. Return only the name of the function.
-
-User Question: {question}
-
-Relevant Code Snippets:
-"""
+        prompt = f"""Related Code Snippets:"""
         for i, doc in enumerate(relevant_docs, 1):
             prompt += f"\nSnippet {i}:\n"
-            prompt += f"Function Name: {doc['metadata']['name']}\n"
-            prompt += f"Code:\n{doc['metadata'].get('snippet', 'No code available')}\n"
+            prompt += f"SourceFile: {doc.metadata}\n"
+            prompt += f"Page content: {doc.page_content}\n"
 
-        prompt += "\nBased on these snippets, which function is most relevant to answering the user's question? Please return only the function name.Then you may exlain your choice"
+        prompt += f"""Given the following user question and relevant code snippets above, identify which function should be considered the main function for answering the user's question. Return only the name of the function.
+User Question: {question}
+in other words, from the code snippets above, which function is most relevant to answering the user's question? Please 
+return only the function name.Then you may exlain your choice"""
 
         return prompt
 
@@ -134,10 +130,9 @@ Relevant Code Snippets:
     def _get_relevant_code_snippets(self, relevant_docs: List[Dict]) -> List[str]:
         snippets = []
         for i, doc in enumerate(relevant_docs, 1):
-            prompt = ''
             prompt += f"\nSnippet {i}:\n"
-            prompt += f"Function Name: {doc['metadata']['name']}\n"
-            prompt += f"Code:\n{doc['metadata'].get('snippet', 'No code available')}\n"
+            prompt += f"SourceFile: {doc.metadata}\n"
+            prompt += f"Page content: {doc.page_content}\n"
             snippets.append(prompt)
         return snippets
     def _get_related_functions(self, main_function: str, max_depth: int = 2) -> Set[str]:
@@ -185,8 +180,8 @@ Relevant Code Snippets:
         prompt = ''        
         for i, doc in enumerate(relevant_docs, 1):
             prompt += f"\nSnippet {i}:\n"
-            prompt += f"Function Name: {doc['metadata']['name']}\n"
-            prompt += f"Code:\n{doc['metadata'].get('snippet', 'No code available')}\n"
+            prompt += f"SourceFile: {doc.metadata}\n"
+            prompt += f"Page content: {doc.page_content}\n"
         return prompt
     def _format_call_graph_info(self, main_function: str, related_functions: Set[str]) -> str:
         info = f"Main Function: {main_function}\n"
@@ -207,7 +202,7 @@ class source_code_manager:
         self.source_db_mgr = source_db_mgr
     def search_fucntion_def(self, function_name_to_search): 
         coarse_results = self.coarse_search(function_name_to_search)
-        definition = self.precise_search([result.page_content for result in coarse_results])
+        definition = self.precise_search([result['page_content'] for result in coarse_results])
         return definition
     # 2. 解析 C++ 代码并提取函数定义
     def extract_function_definitions(self, code):
@@ -225,7 +220,7 @@ class source_code_manager:
         return definitions
 
     # 2. 粗略搜索
-    def coarse_search(self, function_name, k=3): # k 是返回的片段数量
+    def coarse_search(self, function_name, k=10): # k 是返回的片段数量
         results = self.source_db_mgr.search(function_name, k=k)
         return results
 

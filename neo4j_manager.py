@@ -92,8 +92,7 @@ class Neo4jManager:
 
     def _identify_key_entities(self, question: str, relevant_docs: List[Dict]) -> List[str]:
         prompt = self._prepare_key_entities_prompt(question, relevant_docs)
-        chain = self.llm | self.parser
-        result = chain.invoke(prompt)
+        result = self.llm.invoke(prompt)
         return self._parse_key_entities_response(result)
 
     def _prepare_key_entities_prompt(self, question: str, relevant_docs: List[Dict]) -> str:
@@ -105,16 +104,19 @@ Relevant Code Snippets:
 """
         for i, doc in enumerate(relevant_docs, 1):
             prompt += f"\nSnippet {i}:\n"
-            prompt += f"Name: {doc['metadata']['name']}\n"
-            prompt += f"Type: {doc['metadata']['type']}\n"
-            prompt += f"Description: {doc['metadata'].get('description', 'No description available')}\n"
+            prompt += f"SourceFile: {doc.metadata}\n"
+            prompt += f"Page content: {doc.page_content}\n"
 
-        prompt += "\nBased on this information, what are the key entities most relevant to the user's question? Please list only the entity names, separated by commas."
+        prompt +=f"""\nBased on this information, what are the key entities most relevant to the user's question? 
+                   Please list only the entity names, separated by commas. If you think there is nothing related to the question, just say no"""
 
         return prompt
 
     def _parse_key_entities_response(self, llm_response: str) -> List[str]:
+        if llm_response.strip().lower() == "no":
+            return [""]  # 返回包含空字符串的列表
         return [entity.strip() for entity in llm_response.split(',')]
+
 
     def _query_entity_definitions(self, entities: List[str]) -> Dict[str, Dict]:
         definitions = {}
