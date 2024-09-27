@@ -103,6 +103,8 @@ class Query_Processor:
         result = self.llm.invoke(raw_prompt)
         lines = result.splitlines()
         function_name = lines[0].strip() 
+        if function_name == 'none':
+            return ''
         return function_name
 
     def _prepare_main_function_prompt(self, question: str, relevant_docs: List[Dict]) -> str:
@@ -116,7 +118,9 @@ class Query_Processor:
 
 User Question: {question}
 
-In other words, from the code snippets above, which function is most relevant to answering the user's question? Please return only the complete function name. Then you may explain your choice."""
+In other words, from the code snippets above, which function is most relevant to answering the user's question? Please return only the complete function name. 
+If you think no functions are relevant, just return none.
+Then you may explain your choice."""
 
         return prompt
 
@@ -213,7 +217,7 @@ class source_code_manager:
         def traverse_tree(node):
             if node.type == 'function_definition':
                 function_name = node.child_by_field_name('declarator').text.decode()
-                function_body = code[node.start_byte:node.end_byte].decode() 
+                function_body = code[node.start_byte:node.end_byte]
                 definitions.append((function_name, function_body))
             for child in node.children:
                 traverse_tree(child)
@@ -222,7 +226,7 @@ class source_code_manager:
 
     # 2. 粗略搜索
     def coarse_search(self, function_name, k=10): # k 是返回的片段数量
-        results = self.source_db_mgr.search(function_name, k=k)
+        results = self.source_db_mgr.search(function_name, k)
         return results
 
     # 3. 精确解析

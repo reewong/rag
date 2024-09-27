@@ -56,18 +56,28 @@ class CallGraphManager:
         if depth == 0:
             return set()
         try:
-            called_functions = set(self.call_graph.successors(function_name))
-        except KeyError:
-            print(f"Function {function_name} not found in the call graph.")
+            successors = self.call_graph.successors(function_name)
+        except Exception as e:
+            print(f"Error when processing function {function_name}: {e}")
             return set()
+        called_functions = set(successors)
         for func in list(called_functions):
-            called_functions.update(self.get_called_functions(func, depth - 1))
+            try:
+                called_functions.update(self.get_called_functions(func, depth - 1))
+            except Exception as e:
+                print(f"Error when processing function {func} during recursion: {e}")
         return called_functions
+
 
     def get_calling_functions(self, function_name: str, depth: int = 1) -> Set[str]:
         if depth == 0:
             return set()
-        calling_functions = set(self.call_graph.predecessors(function_name))
+        try:
+            predecessors = self.call_graph.predecessors(function_name)
+        except Exception as e:
+            print(f"Error when processing function {function_name}: {e}")
+            return set()
+        calling_functions = set(predecessors)        
         for func in list(calling_functions):
             calling_functions.update(self.get_calling_functions(func, depth - 1))
         print(calling_functions)

@@ -143,10 +143,10 @@ class GenVectorStore:
     def get_vector_store(self):
         return self.vector_store
 
-    def search(self, query: str, k: int = 4) -> List[Dict]:
+    def search(self, query: str, k: int = 10) -> List[Dict]:
         if self.vector_store is None:
             raise ValueError("Vector store has not been created or loaded yet.")
-        results = self.vector_store.similarity_search(query, k=k)
+        results = self.vector_store.similarity_search(query, 10)
         return [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in results]
 
     def add_documents(self, documents: List[Dict], store_path: str):
