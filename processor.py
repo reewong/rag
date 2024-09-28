@@ -10,6 +10,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.output_parsers import PydanticOutputParser
 import json
 from pydantic import BaseModel, Field
+from retriever import _format_relevant_docs
 
 class SubQuestions(BaseModel):
     questions: List[str] = Field(description="A list of sub-questions")
@@ -20,7 +21,7 @@ class Query_Processor:
         self.llm = llm
         self.gragh_db_mgr = gragh_db_mgr
         self.source_mgr = source_code_manager(source_code_store_mgr)
-        self.retriever = source_code_store_mgr.get_retriever() 
+        self.source_code_store_mgr = source_code_store_mgr  # 直接使用GenVectorStore
         self.call_graph_mgr = call_gragh_mgr
         self.parser = StrOutputParser()
         self.directory_structure = directory_structure
@@ -73,7 +74,7 @@ class Query_Processor:
             return self._answer_question(query)
         
     def _answer_question(self, question: str) -> str:
-        relevant_docs = self.retriever.invoke(question)
+        relevant_docs = self.source_code_store_mgr.search(question, 20)
         graph_info = self.gragh_db_mgr.query_graph_database(question, relevant_docs)
         
         # Identify the main function in question
@@ -109,12 +110,8 @@ class Query_Processor:
 
     def _prepare_main_function_prompt(self, question: str, relevant_docs: List[Dict]) -> str:
         prompt = f"""Related Code Snippets:"""
-        for i, doc in enumerate(relevant_docs, 1):
-            prompt += f"\nSnippet {i}:\n"
-            prompt += f"SourceFile: {doc.metadata}\n"
-            prompt += f"Page content: {doc.page_content}\n"
-
-            prompt += f"""Given the following user question and relevant code snippets above, identify which function should be considered the main function for answering the user's question. Return the complete function name, including the namespace or class name if applicable, according to C++ syntax.
+        prompt += _format_relevant_docs(relevant_docs)
+        prompt += f"""Given the following user question and relevant code snippets above, identify which function should be considered the main function for answering the user's question. Return the complete function name, including the namespace or class name if applicable, according to C++ syntax.
 
 User Question: {question}
 
@@ -132,14 +129,14 @@ Then you may explain your choice."""
             snippets[func] = snippet
         return snippets    
 
-    def _get_relevant_code_snippets(self, relevant_docs: List[Dict]) -> List[str]:
-        snippets = []
-        for i, doc in enumerate(relevant_docs, 1):
-            prompt += f"\nSnippet {i}:\n"
-            prompt += f"SourceFile: {doc.metadata}\n"
-            prompt += f"Page content: {doc.page_content}\n"
-            snippets.append(prompt)
-        return snippets
+    # def _get_relevant_code_snippets(self, relevant_docs: List[Dict]) -> List[str]:
+    #     snippets = []
+    #     for i, doc in enumerate(relevant_docs, 1):
+    #         prompt += f"\nSnippet {i}:\n"
+    #         prompt += f"SourceFile: {doc.metadata}\n"
+    #         prompt += f"Page content: {doc.page_content}\n"
+    #         snippets.append(prompt)
+    #     return snippets
     def _get_related_functions(self, main_function: str, max_depth: int = 2) -> Set[str]:
         return self.call_graph_mgr.get_related_functions(main_function, max_depth)
 
@@ -168,7 +165,7 @@ Then you may explain your choice."""
         {self.directory_structure}
         {self.cmake_module_structure}
         其余信息:
-        {self._format_relevant_docs(relevant_docs)}
+        {_format_relevant_docs(relevant_docs)}
         {graph_info}
 
         指令：
@@ -180,13 +177,6 @@ Then you may explain your choice."""
         如果您需要有关任何功能或其上下文的更多信息，请明确说明。
         """
         print(prompt)
-        return prompt
-    def _format_relevant_docs(self, relevant_docs: List[Dict]):
-        prompt = ''        
-        for i, doc in enumerate(relevant_docs, 1):
-            prompt += f"\nSnippet {i}:\n"
-            prompt += f"SourceFile: {doc.metadata}\n"
-            prompt += f"Page content: {doc.page_content}\n"
         return prompt
     def _format_call_graph_info(self, main_function: str, related_functions: Set[str]) -> str:
         info = f"Main Function: {main_function}\n"

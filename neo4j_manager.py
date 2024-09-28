@@ -2,7 +2,8 @@ from neo4j import GraphDatabase
 from typing import List, Dict, Tuple    
 from langchain_core.output_parsers import StrOutputParser
 import logging
-logging.basicConfig(level=logging.DEBUG)
+from retriever import _format_relevant_docs
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 class Neo4jManager:
     def __init__(self, uri, user, password, llm):
@@ -101,12 +102,8 @@ class Neo4jManager:
 User Question: {question}
 
 Relevant Code Snippets:
-"""
-        for i, doc in enumerate(relevant_docs, 1):
-            prompt += f"\nSnippet {i}:\n"
-            prompt += f"SourceFile: {doc.metadata}\n"
-            prompt += f"Page content: {doc.page_content}\n"
-
+"""     
+        prompt += _format_relevant_docs(relevant_docs)
         prompt +=f"""\nBased on this information, what are the key entities most relevant to the user's question? 
                    Please list only the entity names, separated by commas. If you think there is nothing related to the question, just say no"""
 
