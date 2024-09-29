@@ -65,11 +65,24 @@ class GenVectorStore:
 
     def get_vector_store(self):
         return self.vector_store
-
+    def get_retriever(self, k = 10):
+        """Get a retriever for the vector store."""
+        if self.vector_store is None:
+            raise ValueError("Vector store has not been created or loaded yet.")
+        retriever = self.vector_store.as_retriever(
+            search_type="mmr",
+            search_kwargs={
+                "k": k,
+                "fetch_k": 50,
+                "lambda_mult": 0.7
+            }
+        )
+        return retriever
     def search(self, query: str, k: int = 10) -> List[Dict]:
         if self.vector_store is None:
             raise ValueError("Vector store has not been created or loaded yet.")
-        results = self.vector_store.similarity_search(query, k)
+        # results = self.vector_store.similarity_search(query, k)
+        results = self.get_retriever(k).invoke(query)
         return [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in results]
 
     def add_documents(self, documents: List[Dict], store_path: str):
@@ -80,8 +93,3 @@ class GenVectorStore:
         self._save_vector_store(store_path)
         print(f"Added {len(documents)} documents to vector store")
 
-    def get_retriever(self):
-        """Get a retriever for the vector store."""
-        if self.vector_store is None:
-            raise ValueError("Vector store has not been created or loaded yet.")
-        return self.vector_store.as_retriever()

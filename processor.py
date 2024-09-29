@@ -176,7 +176,7 @@ Then you may explain your choice."""
         参考代码片段的特定部分以支持您的解释。
         如果您需要有关任何功能或其上下文的更多信息，请明确说明。
         """
-        print(prompt)
+        # print(prompt)
         return prompt
     def _format_call_graph_info(self, main_function: str, related_functions: Set[str]) -> str:
         info = f"Main Function: {main_function}\n"
