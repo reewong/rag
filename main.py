@@ -37,11 +37,10 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     call_graph = CallGraphManager(parsed_data, relationships)
     call_graph.build_call_graph()
     call_graph.get_related_functions('StartupXLOG', 1)
-    split_code = load_and_split_project(project_path)
     embed_model= OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
     source_code_vdb_mgr = GenVectorStore(embed_model)
     store_path = f"{project_path}/vector_store"
-    source_code_vdb_mgr.get_or_create_vector_store(split_code, store_path)
+    source_code_vdb_mgr.get_or_create_vector_store(store_path, project_path)
 
     # Populate graph database
     current_version = get_project_version(project_path)

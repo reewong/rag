@@ -61,17 +61,7 @@ class Query_Processor:
         return "\n\n".join([f"Sub-answer {i+1}: {answer}" for i, answer in enumerate(answers)])
     def process_query(self, query: str, ) -> str:
         print(f"Processing query: {query}")
-        # Step 1: Decompose the question if it's complex
-        sub_questions = self.decompose(query)
-        
-        if len(sub_questions) > 1:
-            print(f"Decomposed into {len(sub_questions)} sub-questions")
-            answers = []
-            for sub_q in sub_questions:
-                answers.append(self._answer_question(sub_q))
-            return self._synthesize_answers(answers)
-        else:
-            return self._answer_question(query)
+        return self._answer_question(query)
         
     def _answer_question(self, question: str) -> str:
         relevant_docs = self.source_code_store_mgr.search(question, 20)
