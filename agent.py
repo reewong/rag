@@ -10,13 +10,13 @@ from typing import List
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 import re
-
+import math
 # 初始化 LLM
-# llm = ChatOpenAI(model="mistral-nemo:12b-instruct-2407-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
-llm = ChatOpenAI(model="deepseek-chat", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
+# llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
+llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
 # gemma2:27b
-
-MAX_TOKENS = 131072
+# qwen2.5:32b-instruct-q8_0
+MAX_TOKENS = 10000
 # 创建 prompt 模板
 prompt = ChatPromptTemplate.from_messages([
     ("system", "{system_prompt}"),
@@ -92,18 +92,19 @@ def read_file(file_path):
     if file_path in cache_file_dict:
         current_part = cache_file_dict[file_path][0]
         part_num = len(cache_file_dict[file_path][1])
+        file_parts = cache_file_dict[file_path][1]
         if current_part + 1 == part_num:
             cache_file_dict[file_path][0] = part_num - 1
         else:
             cache_file_dict[file_path][0]+=1 
         n = cache_file_dict[file_path][0]
-        addr_message = """文件过大，所以拆分为{part_num}个部分，返回开始的第{n}部分"""
+        addr_message = f"文件过大，所以拆分为{part_num}个部分，返回开始的第{n}部分"
         return [file_parts[n], addr_message]
     file_parts = split_file_by_tokens(file_path, MAX_TOKENS)
     parts_num = len(file_parts)
     if parts_num > 1 :
         cache_file_dict[file_path] = [0,file_parts]
-        addr_message = """文件过大，所以拆分为{parts_num}个部分，返回开始的第一部分"""
+        addr_message = f"文件过大，所以拆分为{parts_num}个部分，返回开始的第一部分"
     return [file_parts[0], addr_message]
 
 def extract_json(text):
@@ -129,15 +130,11 @@ def get_user_feedback():
 
 # 向量数据库模拟检索
 def search_code_in_vector_db(input_paras, vdb_mgr):
-    res = ''
+    res = []
     input_paras_split = input_paras.split(',')
     for input_para in input_paras_split:
-        search_docs = vdb_mgr.search(input_para, 10)
-        if len(search_docs) == 0:
-            continue
-        docstr = json.dumps(search_docs[0], ensure_ascii=False, indent=4)
-        res+= docstr
-        res+='\n'
+        search_docs = vdb_mgr.search(input_para, 3)
+        res.append(search_docs)
     return res
 
 # 调用 LangChain 的 LLM 进行代码分析
@@ -151,7 +148,7 @@ def analyze_code_with_context(question, final_response):
     return chain_with_history.invoke({"system_prompt":"背景问题是"+question, "question": analyze_prompt.format(tool_response = final_response)}, config={"configurable": {"session_id": session_id}})
 tool_descriptions = {
     "FileReadTool": "输入：文件路径列表。输出：文件内容的文本以及额外信息（文件过大时会输出部分文件，额外信息中会注明是第几部分）。用于读取代码库中的文件内容，适合需要直接查看源代码的情况。返回格式：{\"file_path\": \"...\", \"additonal_message\": \"...\",\"content\": \"...\"}",
-    "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题，请务必用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键词或主题查找相关代码片段。返回格式：{\"results\": [...]}",
+    "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题，最好使用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键词或主题查找相关代码片段。返回格式：{\"results\": [...]}",
 }
 # 自定义的 agent 实现
 def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase_directory):
@@ -205,13 +202,13 @@ def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase
 {{"continue_iteration": true/false, "reason": "..."}}""",
             input_variables=["response", "analysis"]
         )
-        evaluation_raw = chain_with_history.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question":evaluation_prompt.format(response=json.dumps(final_response), analysis = analysis)},
+        evaluation_raw = chain_with_history.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question":evaluation_prompt.format(response=json.dumps(final_response), analysis = analysis.content)},
                                                         config={"configurable": {"session_id": session_id}})
         evaluation_response = extract_json(evaluation_raw.content)
-        
-        if evaluation_response["continue_iteration"] != True:
+        print(evaluation_response)
+        human_opt_continue = input("是否继续迭代? yes/no")
+        if human_opt_continue == 'no':
             break
-
         iteration_count += 1
         user_feedback = get_user_feedback()
     return [analysis, evaluation_response]
@@ -247,12 +244,12 @@ def main():
         config={"configurable": {"session_id": session_id}})
     print(back_response.content)
 
-    while True:
-        continue_flag = input("输入这轮迭代的操作指令\n")
-        if continue_flag.lower() in ["exit", "quit"]:
-            break
-        response = custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase_directory)
-        print(f"响应：\n{response}")
+    response = custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase_directory)
+    print(f"响应：\n{response}")
+    conclusion_prompt = "请结合以上所有聊天记录对背景问题做个总结"
+    conclusion = chain_with_history.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question": conclusion_prompt},
+        config={"configurable": {"session_id": session_id}})
+    print(f"结论:\n {conclusion.content}")
 
 if __name__ == "__main__":
     main()
