@@ -11,9 +11,13 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 import re
 import math
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.messages import BaseMessage
+from pydantic import BaseModel, Field
+from typing import List
 # 初始化 LLM
-# llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
-llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
+llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
+# llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
 # gemma2:27b
 # qwen2.5:32b-instruct-q8_0
 MAX_TOKENS = 10000
@@ -26,19 +30,34 @@ prompt = ChatPromptTemplate.from_messages([
 
 # 创建 LLM 链
 chain = prompt | llm
+class InMemoryHistory(BaseChatMessageHistory, BaseModel):
+    """In memory implementation of chat message history."""
+    messages: List[BaseMessage] = Field(default_factory=list)
 
+    def add_messages(self, messages: List[BaseMessage]) -> None:
+        self.messages.extend(messages)
 
-
+    def clear(self) -> None:
+        self.messages = []
 
 store = {}
 session_id = "foo"  # 固定 session_id 用于演示
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
+def get_by_session_id(session_id: str) -> BaseChatMessageHistory:
     if session_id not in store:
-        store[session_id] = ChatMessageHistory()
+        store[session_id] = InMemoryHistory()
     return store[session_id]
+
+
+
+# store = {}
+# session_id = "foo"  # 固定 session_id 用于演示
+# def get_session_history(session_id: str) -> BaseChatMessageHistory:
+#     if session_id not in store:
+#         store[session_id] = ChatMessageHistory()
+#     return store[session_id]
 chain_with_history = RunnableWithMessageHistory(
     chain,
-    get_session_history,
+    get_by_session_id,
     input_messages_key="question",
     history_messages_key="history",
 )
@@ -83,7 +102,8 @@ def split_file_by_tokens(file_path: str, max_tokens: int):
                 parts.append(''.join(current_part))
             return parts
     except Exception as e:
-        return str(e)
+        print(e)
+        return [str(e)]
 
 cache_file_dict ={}
 # 模拟读取文件内容
@@ -217,11 +237,13 @@ def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase
 codebase_directory = r"D:\sql\openGauss-server"
 file_structure = get_codebase_structure(codebase_directory)
 
-embed_model = OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
+# embed_model = OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
+embed_model = HuggingFaceEmbeddings(model_name="jinaai/jina-embeddings-v2-base-code",
+                                       model_kwargs={'device': 'cpu'}, encode_kwargs={'device': 'cpu'})
 vdb_mgr = GenVectorStore(embed_model)
 
-store_path = f"{codebase_directory}/vector_store"
-vdb_mgr.get_or_create_vector_store([],store_path)
+store_path = f"{codebase_directory}/vector_store_hug"
+vdb_mgr.get_or_create_vector_store(codebase_directory, store_path)
 
 # 使用自定义 agent
 def main():

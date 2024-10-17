@@ -2,6 +2,7 @@ import os
 from typing import List, Dict, Optional
 from langchain.docstore.document import Document
 from langchain_chroma import Chroma
+from load_and_splitter import load_and_split_project
 def _format_relevant_docs(relevant_docs: List[Dict]):
     prompt = ''        
     for i, doc in enumerate(relevant_docs, 1):
@@ -38,7 +39,6 @@ class GenVectorStore:
         if not os.path.exists(store_path):
             print(f"Vector store not found at {store_path}")
             return False
-
         try:
             self.vector_store = Chroma(
                 persist_directory=store_path,
@@ -50,10 +50,12 @@ class GenVectorStore:
             print(f"Error loading vector store from {store_path}: {str(e)}")
             return False
 
-    def get_or_create_vector_store(self, documents: List[Dict], store_path: str):
+    def get_or_create_vector_store(self, code_path, store_path: str):
         """Load the vector store if it exists and is valid, otherwise create a new one."""
         if not self.load_vector_store(store_path):
+            documents = load_and_split_project(code_path)
             print(f"Creating new vector store at {store_path}")
+            os.makedirs(store_path)
             self.create_vector_store(documents, store_path)
 
     def _save_vector_store(self, store_path: str):

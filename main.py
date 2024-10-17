@@ -1,8 +1,6 @@
 from parser import parse_doxygen_output, generate_directory_structure, get_basic_structure_by_cmake
-from load_and_splitter import load_and_split_project
 from call_graph_manager import CallGraphManager
 from retriever import GenVectorStore
-# from vector_store.embeddings import create_vector_embeddings
 from neo4j_manager import Neo4jManager
 from processor import Query_Processor
 from langchain_community.llms import Ollama
@@ -37,11 +35,10 @@ def analyze_cpp_project(project_path: str, query: str) -> str:
     call_graph = CallGraphManager(parsed_data, relationships)
     call_graph.build_call_graph()
     call_graph.get_related_functions('StartupXLOG', 1)
-    split_code = load_and_split_project(project_path)
     embed_model= OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
     source_code_vdb_mgr = GenVectorStore(embed_model)
     store_path = f"{project_path}/vector_store"
-    source_code_vdb_mgr.get_or_create_vector_store(split_code, store_path)
+    source_code_vdb_mgr.get_or_create_vector_store(project_path, store_path)
 
     # Populate graph database
     current_version = get_project_version(project_path)
