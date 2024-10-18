@@ -11,10 +11,11 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 import re
 import math
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 from typing import List
+from langchain_core.runnables import RunnablePassthrough
 # 初始化 LLM
 llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
 # llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
@@ -27,7 +28,8 @@ prompt = ChatPromptTemplate.from_messages([
     MessagesPlaceholder(variable_name="history"),
     ("human", "{question}"),
 ])
-
+# 一开始获取代码库的文件结构并存储
+codebase_directory = r"D:\sql\openGauss-server"
 # 创建 LLM 链
 chain = prompt | llm
 class InMemoryHistory(BaseChatMessageHistory, BaseModel):
@@ -55,13 +57,44 @@ def get_by_session_id(session_id: str) -> BaseChatMessageHistory:
 #     if session_id not in store:
 #         store[session_id] = ChatMessageHistory()
 #     return store[session_id]
-chain_with_history = RunnableWithMessageHistory(
+raw_chain_with_history = RunnableWithMessageHistory(
     chain,
     get_by_session_id,
     input_messages_key="question",
     history_messages_key="history",
 )
+question = " 已知这是一个数据库内核代码，请你应用我提供的工具，获取你需要的代码，分析数据库回放相关线程的工作原理"
 
+def summarize_messages(chain_input):
+    store_messager = get_by_session_id(session_id)
+    stored_messages = store_messager.messages
+    if len(stored_messages) == 0:
+        return False
+    summarization_prompt = ChatPromptTemplate.from_messages(
+        [
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}"),
+            (
+                "user",
+                "Given a list of chat messages and a question, remove any irrelevant messages and keep only the ones related to the question. Provide the filtered list of relevant messages.",
+            )
+        ]
+    )
+    summarization_chain = summarization_prompt | llm
+
+    cut_message = summarization_chain.invoke({"chat_history": stored_messages, "question": question})
+
+    store_messager.clear()
+
+    store_messager.add_message(cut_message)
+
+    return True
+
+
+chain_with_history = (
+    RunnablePassthrough.assign(messages_summarized=summarize_messages)
+    | raw_chain_with_history
+)
 # 递归获取文件目录结构并存储到内存中
 def get_codebase_structure(directory):
     file_structure = []
@@ -189,7 +222,7 @@ def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase
         )
 
         format_tool_prompt = tool_selection_prompt.format(user_feedback=user_feedback)
-        selected_tool_response = chain_with_history.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": format_tool_prompt}, config={"configurable": {"session_id": session_id}})
+        selected_tool_response = raw_chain_with_history.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": format_tool_prompt}, config={"configurable": {"session_id": session_id}})
         sec_data = extract_json(selected_tool_response.content)
         selected_tool = sec_data["selected_tool"]
         input_paras = sec_data["input_paras"]
@@ -210,7 +243,7 @@ def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase
             final_response = {"results": code_snippets} if code_snippets != "No relevant results found." else {"message": "未找到相关代码片段。"}
 
         else:
-            final_response = {"message": "未识别的问题类型，请尝试提供更明确的需求。"}
+            final_response = {"message": "未识别的工具类型，请尝试提供更明确的需求。"}
         analysis = analyze_code_with_context(question, final_response)
         # 使用 LLM 评估是否需要继续迭代，加入人类反馈
         evaluation_prompt = PromptTemplate(
@@ -233,10 +266,7 @@ def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase
         user_feedback = get_user_feedback()
     return [analysis, evaluation_response]
 
-# 一开始获取代码库的文件结构并存储
-codebase_directory = r"D:\sql\openGauss-server"
 file_structure = get_codebase_structure(codebase_directory)
-
 # embed_model = OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
 embed_model = HuggingFaceEmbeddings(model_name="jinaai/jina-embeddings-v2-base-code",
                                        model_kwargs={'device': 'cpu'}, encode_kwargs={'device': 'cpu'})
@@ -247,7 +277,6 @@ vdb_mgr.get_or_create_vector_store(codebase_directory, store_path)
 
 # 使用自定义 agent
 def main():
-    question = " 已知这是一个数据库内核代码，请你应用我提供的工具，获取你需要的代码，分析数据库回放相关线程的工作原理"
     background_prompt = PromptTemplate(
         template="""请务必记住以下信息，后面分析会用到：
 可用工具：
@@ -261,7 +290,7 @@ def main():
     )
     tools_description_text = "\n".join([f"{name}: {desc}" for name, desc in tool_descriptions.items()])
     format_back_prompt = background_prompt.format(tools = tools_description_text, file_structure = file_structure)
-    back_response = chain_with_history.invoke({"system_prompt": '你是一个擅长搜索代码并分析代码的代码分析员，总的背景是要回答如下问题:'+ question,
+    back_response = raw_chain_with_history.invoke({"system_prompt": '你是一个擅长搜索代码并分析代码的代码分析员，总的背景是要回答如下问题:'+ question,
         "question": format_back_prompt},
         config={"configurable": {"session_id": session_id}})
     print(back_response.content)
