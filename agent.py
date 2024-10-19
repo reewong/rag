@@ -1,4 +1,3 @@
-from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_community.embeddings import OllamaEmbeddings
@@ -16,9 +15,12 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 from typing import List
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.messages import HumanMessage, AIMessage
+
 # 初始化 LLM
-llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
-# llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
+# llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
+llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
+# llm = ChatOpenAI(model="yi-lightning", api_key="03b1afa244ed41a18173600de7a4ddec", base_url="https://api.lingyiwanwu.com/v1")
 # gemma2:27b
 # qwen2.5:32b-instruct-q8_0
 MAX_TOKENS = 10000
@@ -31,7 +33,7 @@ prompt = ChatPromptTemplate.from_messages([
 # 一开始获取代码库的文件结构并存储
 codebase_directory = r"D:\sql\openGauss-server"
 # 创建 LLM 链
-chain = prompt | llm
+raw_chain = prompt | llm
 class InMemoryHistory(BaseChatMessageHistory, BaseModel):
     """In memory implementation of chat message history."""
     messages: List[BaseMessage] = Field(default_factory=list)
@@ -49,52 +51,8 @@ def get_by_session_id(session_id: str) -> BaseChatMessageHistory:
         store[session_id] = InMemoryHistory()
     return store[session_id]
 
-
-
-# store = {}
-# session_id = "foo"  # 固定 session_id 用于演示
-# def get_session_history(session_id: str) -> BaseChatMessageHistory:
-#     if session_id not in store:
-#         store[session_id] = ChatMessageHistory()
-#     return store[session_id]
-raw_chain_with_history = RunnableWithMessageHistory(
-    chain,
-    get_by_session_id,
-    input_messages_key="question",
-    history_messages_key="history",
-)
 question = " 已知这是一个数据库内核代码，请你应用我提供的工具，获取你需要的代码，分析数据库回放相关线程的工作原理"
 
-def summarize_messages(chain_input):
-    store_messager = get_by_session_id(session_id)
-    stored_messages = store_messager.messages
-    if len(stored_messages) == 0:
-        return False
-    summarization_prompt = ChatPromptTemplate.from_messages(
-        [
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}"),
-            (
-                "user",
-                "Given a list of chat messages and a question, remove any irrelevant messages and keep only the ones related to the question. Provide the filtered list of relevant messages.",
-            )
-        ]
-    )
-    summarization_chain = summarization_prompt | llm
-
-    cut_message = summarization_chain.invoke({"chat_history": stored_messages, "question": question})
-
-    store_messager.clear()
-
-    store_messager.add_message(cut_message)
-
-    return True
-
-
-chain_with_history = (
-    RunnablePassthrough.assign(messages_summarized=summarize_messages)
-    | raw_chain_with_history
-)
 # 递归获取文件目录结构并存储到内存中
 def get_codebase_structure(directory):
     file_structure = []
@@ -198,36 +156,64 @@ def analyze_code_with_context(question, final_response):
         根据工具结果，并结合历史聊天记录对背景问题进行分析，得出目前的结论，并指出下一步的分析方向""",
         input_variables = ["tool_response"]
     )
-    return chain_with_history.invoke({"system_prompt":"背景问题是"+question, "question": analyze_prompt.format(tool_response = final_response)}, config={"configurable": {"session_id": session_id}})
+    res = raw_chain.invoke({"system_prompt":"背景问题是"+question, "question": analyze_prompt.format(tool_response = final_response), "history": get_by_session_id(session_id).messages})
+    get_by_session_id(session_id).add_ai_message(res.content)
+    return res
 tool_descriptions = {
-    "FileReadTool": "输入：文件路径列表。输出：文件内容的文本以及额外信息（文件过大时会输出部分文件，额外信息中会注明是第几部分）。用于读取代码库中的文件内容，适合需要直接查看源代码的情况。返回格式：{\"file_path\": \"...\", \"additonal_message\": \"...\",\"content\": \"...\"}",
+    "FileReadTool": "输入：文件路径列表。输出：文件内容的文本以及额外信息（文件过大时会输出部分文件，额外信息中会注明是第几部分）。该工具可以直接读取代码库中的文件内容，适合需要直接查看源代码的情况。返回格式：{\"file_path\": \"...\", \"additonal_message\": \"...\",\"content\": \"...\"}",
     "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题，最好使用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键词或主题查找相关代码片段。返回格式：{\"results\": [...]}",
 }
+tools_description_text = "\n".join([f"{name}: {desc}" for name, desc in tool_descriptions.items()])
+
+def get_input_paras_by_llm(raw_chain, selected_tool, file_structure):
+    input_para_response = ""
+    common_prefix = """根据聊天历史,你选择了工具：{selected_tool}"""
+    common_suffix ="""请根据聊天记录中的工具描述，给出合适的工具参数，以以下json格式给出：
+{{"input_paras": "参数的字符串(比如FileReadTool，输入你认为这次需要读取的文件路径列表,用逗号隔开;比如VectorSearchTool,输入你认为应该查询的关键问题,用逗号隔开)}}"""
+    if selected_tool == "FileReadTool":
+        file_prompt= """给出文件结构为:
+{file_structure}
+以上为代码仓文件目录"""
+        para_prompt = PromptTemplate(template = common_prefix + "\n"+ file_prompt +"\n"+ common_suffix, input_variables=["selected_tool", "file_structure"])
+        input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool, file_structure = file_structure), 
+        "history":get_by_session_id(session_id)})
+                             
+    elif selected_tool == "VectorSearchTool":
+        vector_prompt = """"""
+        para_prompt = PromptTemplate(template = common_prefix + "\n"+ vector_prompt +"\n"+ common_suffix, input_variables=["selected_tool"])                 
+        input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool), "history":get_by_session_id(session_id).messages})
+    get_by_session_id(session_id).add_ai_message(input_para_response.content)
+    sec_data = extract_json(input_para_response.content)
+    input_paras = sec_data["input_paras"]
+    return input_paras
 # 自定义的 agent 实现
-def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase_directory):
+def custom_agent(question, vdb_mgr, file_structure, codebase_directory):
     iteration_count = 0
     max_iterations = 50
     final_response = None
-    user_feedback = ""
+    user_feedback = "一开始尽量去寻找分析用户问题的入口函数"
     while iteration_count < max_iterations:
         # 使用 LLM 选择合适的工具
 
         tool_selection_prompt = PromptTemplate(
             template="""用户反馈：
 {user_feedback}
-为解决系统提示中的背景问题，请结合背景问题,上一轮的用户反馈,以及我让你记住的代码目录结构，可用工具列表，从我给你的可用工具列表中选择最合适的工具，输出工具的标准名称和你认为合适的输入参数以及原因:
+工具列表：
+{tool_desc}
+为解决系统提示中的背景问题，请结合背景问题,用户反馈,从工具列表中选择最合适的工具，输出工具的标准名称以及原因:
 请保证输出格式为 JSON，不要有其他多余字样，回答范例如下，严格按以下格式回答，不要有其他字符串：
-{{"selected_tool": "工具名称", "input_paras": "参数的字符串(比如FileReadTool，输入你认为这次需要读取的文件路径列表,用逗号隔开;比如VectorSearchTool,输入你认为应该查询的关键问题,用逗号隔开)",“reason": "这样选择和给出这样参数的原因"}}""",
-            input_variables=["user_feedback"]
+{{"selected_tool": "工具名称", ,“reason": "选择该工具的原因"}}""",
+            input_variables=["user_feedback", "tool_desc"]
         )
 
-        format_tool_prompt = tool_selection_prompt.format(user_feedback=user_feedback)
-        selected_tool_response = raw_chain_with_history.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": format_tool_prompt}, config={"configurable": {"session_id": session_id}})
+        format_tool_prompt = tool_selection_prompt.format(user_feedback = user_feedback, tool_desc = tools_description_text )
+        selected_tool_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": format_tool_prompt, "history":get_by_session_id(session_id).messages})
+        get_by_session_id(session_id).add_ai_message(selected_tool_response.content)
         sec_data = extract_json(selected_tool_response.content)
         selected_tool = sec_data["selected_tool"]
-        input_paras = sec_data["input_paras"]
 
         # 根据 LLM 选择的工具进行操作
+        input_paras = get_input_paras_by_llm(raw_chain, selected_tool, file_structure)
         if selected_tool == "FileReadTool":
             selected_files = input_paras.split(',')
             combined_results = []
@@ -241,23 +227,21 @@ def custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase
         elif selected_tool == "VectorSearchTool":
             code_snippets = search_code_in_vector_db(input_paras, vdb_mgr)
             final_response = {"results": code_snippets} if code_snippets != "No relevant results found." else {"message": "未找到相关代码片段。"}
-
         else:
             final_response = {"message": "未识别的工具类型，请尝试提供更明确的需求。"}
         analysis = analyze_code_with_context(question, final_response)
         # 使用 LLM 评估是否需要继续迭代，加入人类反馈
         evaluation_prompt = PromptTemplate(
-            template="""这次你选择的工具返回的结果为：
-{response}
-以下是当前的分析结果：
+            template="""以下是当前的分析结果：
 {analysis}
-请评估是否已经收集到足够的信息和得到足够翔实的结论来回答系统提示中的背景问题，或者是否需要进一步的操作。保证输出的格式为json,不要包含其他的多余字样，如：
+请根据分析结果和聊天历史记录评估是否已经收集到足够的信息和得到足够翔实的结论来回答系统提示中的背景问题，或者是否需要进一步的操作。保证输出的格式为json,不要包含其他的多余字样，如：
 {{"continue_iteration": true/false, "reason": "..."}}""",
-            input_variables=["response", "analysis"]
+            input_variables=["analysis"]
         )
-        evaluation_raw = chain_with_history.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question":evaluation_prompt.format(response=json.dumps(final_response), analysis = analysis.content)},
-                                                        config={"configurable": {"session_id": session_id}})
+        evaluation_raw = raw_chain.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question":evaluation_prompt.format(analysis = analysis.content), "history":get_by_session_id(session_id).messages})
         evaluation_response = extract_json(evaluation_raw.content)
+        get_by_session_id(session_id).add_ai_message(evaluation_response.content)
+
         print(evaluation_response)
         human_opt_continue = input("是否继续迭代? yes/no")
         if human_opt_continue == 'no':
@@ -277,29 +261,10 @@ vdb_mgr.get_or_create_vector_store(codebase_directory, store_path)
 
 # 使用自定义 agent
 def main():
-    background_prompt = PromptTemplate(
-        template="""请务必记住以下信息，后面分析会用到：
-可用工具：
-{tools}
-代码仓目录结构：
-{file_structure}
-目前你只需记住以上信息，不需要回答太多，后面会用到
-""",
-
-        input_variables=["tools","file_structure"]
-    )
-    tools_description_text = "\n".join([f"{name}: {desc}" for name, desc in tool_descriptions.items()])
-    format_back_prompt = background_prompt.format(tools = tools_description_text, file_structure = file_structure)
-    back_response = raw_chain_with_history.invoke({"system_prompt": '你是一个擅长搜索代码并分析代码的代码分析员，总的背景是要回答如下问题:'+ question,
-        "question": format_back_prompt},
-        config={"configurable": {"session_id": session_id}})
-    print(back_response.content)
-
-    response = custom_agent(question, chain_with_history, vdb_mgr, file_structure, codebase_directory)
+    response = custom_agent(question, vdb_mgr, file_structure, codebase_directory)
     print(f"响应：\n{response}")
     conclusion_prompt = "请结合以上所有聊天记录对背景问题做个总结"
-    conclusion = chain_with_history.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question": conclusion_prompt},
-        config={"configurable": {"session_id": session_id}})
+    conclusion = raw_chain.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question": conclusion_prompt, "history":get_by_session_id(session_id).messages})
     print(f"结论:\n {conclusion.content}")
 
 if __name__ == "__main__":
