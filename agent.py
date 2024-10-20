@@ -19,7 +19,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 # 初始化 LLM
 # llm = ChatOpenAI(model="mistral-small:22b-instruct-2409-q8_0", api_key="ollama", base_url="http://localhost:11434/v1")
-llm = ChatOpenAI(model="deepseek-coder", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
+llm = ChatOpenAI(model="deepseek-chat", api_key="sk-dfa01c38b5d345728d2517c04012b2c1", base_url="https://api.deepseek.com/v1")
 # llm = ChatOpenAI(model="yi-lightning", api_key="03b1afa244ed41a18173600de7a4ddec", base_url="https://api.lingyiwanwu.com/v1")
 # gemma2:27b
 # qwen2.5:32b-instruct-q8_0
@@ -30,6 +30,7 @@ prompt = ChatPromptTemplate.from_messages([
     MessagesPlaceholder(variable_name="history"),
     ("human", "{question}"),
 ])
+
 # 一开始获取代码库的文件结构并存储
 codebase_directory = r"D:\sql\openGauss-server"
 # 创建 LLM 链
@@ -118,18 +119,29 @@ def read_file(file_path):
         addr_message = f"文件过大，所以拆分为{parts_num}个部分，返回开始的第一部分"
     return [file_parts[0], addr_message]
 
-def extract_json(text):
-    # 使用正则表达式匹配JSON格式的内容
-    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+import re
+import json
+
+def extract_json_value(text, key):
+    # 使用正则表达式匹配所有 JSON 格式的内容，非贪婪匹配
+    json_matches = re.findall(r'\{.*?\}', text, re.DOTALL)
     
-    if json_match:
-        json_str = json_match.group()
-        try:
-            # 尝试将字符串解析为JSON
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            print("Error: The extracted string is not a valid JSON format.")
-            return None
+    if json_matches:
+        for json_str in json_matches:
+            try:
+                # 尝试将每个字符串解析为JSON
+                json_obj = json.loads(json_str)
+                
+                # 检查指定的key是否存在，并且其对应的值不是空字符串
+                if key in json_obj and json_obj[key] != "":
+                    return json_obj[key]
+            except json.JSONDecodeError:
+                print(f"Error: The extracted string is not a valid JSON format: {json_str}")
+                continue  # 跳过无效的 JSON
+        
+        # 如果所有 JSON 中的指定 key 对应的值都是空串
+        print(f"Error: No valid value found for key '{key}'.")
+        return None
     else:
         print("Error: No JSON object found.")
         return None
@@ -156,6 +168,10 @@ def analyze_code_with_context(question, final_response):
         根据工具结果，并结合历史聊天记录对背景问题进行分析，得出目前的结论，并指出下一步的分析方向""",
         input_variables = ["tool_response"]
     )
+    amalyze_prompt_value = analyze_prompt.invoke(
+        {"tool_response": final_response}
+    )
+    get_by_session_id(session_id).add_user_message(amalyze_prompt_value.text)
     res = raw_chain.invoke({"system_prompt":"背景问题是"+question, "question": analyze_prompt.format(tool_response = final_response), "history": get_by_session_id(session_id).messages})
     get_by_session_id(session_id).add_ai_message(res.content)
     return res
@@ -176,15 +192,14 @@ def get_input_paras_by_llm(raw_chain, selected_tool, file_structure):
 以上为代码仓文件目录"""
         para_prompt = PromptTemplate(template = common_prefix + "\n"+ file_prompt +"\n"+ common_suffix, input_variables=["selected_tool", "file_structure"])
         input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool, file_structure = file_structure), 
-        "history":get_by_session_id(session_id)})
-                             
+        "history":get_by_session_id(session_id.messages)})
+        get_by_session_id(session_id).add_user_message()                     
     elif selected_tool == "VectorSearchTool":
         vector_prompt = """"""
         para_prompt = PromptTemplate(template = common_prefix + "\n"+ vector_prompt +"\n"+ common_suffix, input_variables=["selected_tool"])                 
         input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool), "history":get_by_session_id(session_id).messages})
     get_by_session_id(session_id).add_ai_message(input_para_response.content)
-    sec_data = extract_json(input_para_response.content)
-    input_paras = sec_data["input_paras"]
+    input_paras = extract_json_value(input_para_response.content, "input_paras")
     return input_paras
 # 自定义的 agent 实现
 def custom_agent(question, vdb_mgr, file_structure, codebase_directory):
@@ -206,11 +221,15 @@ def custom_agent(question, vdb_mgr, file_structure, codebase_directory):
             input_variables=["user_feedback", "tool_desc"]
         )
 
-        format_tool_prompt = tool_selection_prompt.format(user_feedback = user_feedback, tool_desc = tools_description_text )
+        format_tool_prompt = tool_selection_prompt.format(user_feedback = user_feedback, tool_desc = tools_description_text)
         selected_tool_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": format_tool_prompt, "history":get_by_session_id(session_id).messages})
+        prompt_value = prompt.invoke(
+            {"system_prompt": '总的背景是要解决:'+ question,"question": format_tool_prompt, "history":get_by_session_id(session_id).messages}
+        )
+        if iteration_count==0:
+            get_by_session_id(session_id).add_messages(prompt_value.messages)
         get_by_session_id(session_id).add_ai_message(selected_tool_response.content)
-        sec_data = extract_json(selected_tool_response.content)
-        selected_tool = sec_data["selected_tool"]
+        selected_tool = extract_json_value(selected_tool_response.content, "selected_tool")
 
         # 根据 LLM 选择的工具进行操作
         input_paras = get_input_paras_by_llm(raw_chain, selected_tool, file_structure)
@@ -239,24 +258,23 @@ def custom_agent(question, vdb_mgr, file_structure, codebase_directory):
             input_variables=["analysis"]
         )
         evaluation_raw = raw_chain.invoke({"system_prompt": '总的背景是要解决如下问题:'+ question,"question":evaluation_prompt.format(analysis = analysis.content), "history":get_by_session_id(session_id).messages})
-        evaluation_response = extract_json(evaluation_raw.content)
-        get_by_session_id(session_id).add_ai_message(evaluation_response.content)
+        get_by_session_id(session_id).add_ai_message(evaluation_raw.content)
 
-        print(evaluation_response)
+        print(evaluation_raw.content)
         human_opt_continue = input("是否继续迭代? yes/no")
         if human_opt_continue == 'no':
             break
         iteration_count += 1
         user_feedback = get_user_feedback()
-    return [analysis, evaluation_response]
+    return [analysis, evaluation_raw.content]
 
 file_structure = get_codebase_structure(codebase_directory)
-# embed_model = OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
-embed_model = HuggingFaceEmbeddings(model_name="jinaai/jina-embeddings-v2-base-code",
-                                       model_kwargs={'device': 'cpu'}, encode_kwargs={'device': 'cpu'})
+embed_model = OllamaEmbeddings(model="unclemusclez/jina-embeddings-v2-base-code")
+# embed_model = HuggingFaceEmbeddings(model_name="jinaai/jina-embeddings-v2-base-code",
+                                    #    model_kwargs={'device': 'cpu'}, encode_kwargs={'device': 'cpu'})
 vdb_mgr = GenVectorStore(embed_model)
 
-store_path = f"{codebase_directory}/vector_store_hug"
+store_path = f"{codebase_directory}/vector_store"
 vdb_mgr.get_or_create_vector_store(codebase_directory, store_path)
 
 # 使用自定义 agent
