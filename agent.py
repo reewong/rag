@@ -177,7 +177,7 @@ def analyze_code_with_context(question, final_response):
     return res
 tool_descriptions = {
     "FileReadTool": "输入：文件路径列表。输出：文件内容的文本以及额外信息（文件过大时会输出部分文件，额外信息中会注明是第几部分）。该工具可以直接读取代码库中的文件内容，适合需要直接查看源代码的情况。返回格式：{\"file_path\": \"...\", \"additonal_message\": \"...\",\"content\": \"...\"}",
-    "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题，最好使用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键词或主题查找相关代码片段。返回格式：{\"results\": [...]}",
+    "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题,注意是完整的问题不是零散的单词，短语，最好使用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键问题查询相关代码片段。返回格式：{\"results\": [...]}",
 }
 tools_description_text = "\n".join([f"{name}: {desc}" for name, desc in tool_descriptions.items()])
 
@@ -192,7 +192,7 @@ def get_input_paras_by_llm(raw_chain, selected_tool, file_structure):
 以上为代码仓文件目录"""
         para_prompt = PromptTemplate(template = common_prefix + "\n"+ file_prompt +"\n"+ common_suffix, input_variables=["selected_tool", "file_structure"])
         input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool, file_structure = file_structure), 
-        "history":get_by_session_id(session_id.messages)})
+        "history":get_by_session_id(session_id).messages})
         get_by_session_id(session_id).add_user_message()                     
     elif selected_tool == "VectorSearchTool":
         vector_prompt = """"""
