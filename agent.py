@@ -177,7 +177,7 @@ def analyze_code_with_context(question, final_response):
     return res
 tool_descriptions = {
     "FileReadTool": "输入：文件路径列表。输出：文件内容的文本以及额外信息（文件过大时会输出部分文件，额外信息中会注明是第几部分）。该工具可以直接读取代码库中的文件内容，适合需要直接查看源代码的情况。返回格式：{\"file_path\": \"...\", \"additonal_message\": \"...\",\"content\": \"...\"}",
-    "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题,注意是完整的问题不是零散的单词，短语，最好使用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键问题查询相关代码片段。返回格式：{\"results\": [...]}",
+    "VectorSearchTool": "输入：查询字符串(你认为需要查询的关键问题,注意是完整的主题不是零散的单词，短语，最好使用英文)。输出：相关代码片段的列表。用于在代码库中进行向量化检索，适合根据特定关键问题查询相关代码片段。返回格式：{\"results\": [...]}",
 }
 tools_description_text = "\n".join([f"{name}: {desc}" for name, desc in tool_descriptions.items()])
 
@@ -185,17 +185,18 @@ def get_input_paras_by_llm(raw_chain, selected_tool, file_structure):
     input_para_response = ""
     common_prefix = """根据聊天历史,你选择了工具：{selected_tool}"""
     common_suffix ="""请根据聊天记录中的工具描述，给出合适的工具参数，以以下json格式给出：
-{{"input_paras": "参数的字符串(比如FileReadTool，输入你认为这次需要读取的文件路径列表,用逗号隔开;比如VectorSearchTool,输入你认为应该查询的关键问题,用逗号隔开)}}"""
+{{"input_paras": "xxxx(刚才描述的参数，多个参数使用逗号隔开)")}}"""
     if selected_tool == "FileReadTool":
         file_prompt= """给出文件结构为:
 {file_structure}
-以上为代码仓文件目录"""
+以上为代码仓文件目录
+FileReadTool,输入参数应当你认为这次需要读取的文件路径列表(一次不宜读过多文件，选择你觉得最能切中问题的文件),用逗号隔开
+"""
         para_prompt = PromptTemplate(template = common_prefix + "\n"+ file_prompt +"\n"+ common_suffix, input_variables=["selected_tool", "file_structure"])
         input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool, file_structure = file_structure), 
-        "history":get_by_session_id(session_id).messages})
-        get_by_session_id(session_id).add_user_message()                     
+        "history":get_by_session_id(session_id).messages})                    
     elif selected_tool == "VectorSearchTool":
-        vector_prompt = """"""
+        vector_prompt = """VectorSearchTool的输入参数应当是你认为需要查询的关键问题"""
         para_prompt = PromptTemplate(template = common_prefix + "\n"+ vector_prompt +"\n"+ common_suffix, input_variables=["selected_tool"])                 
         input_para_response = raw_chain.invoke({"system_prompt": '总的背景是要解决:'+ question,"question": para_prompt.format(selected_tool = selected_tool), "history":get_by_session_id(session_id).messages})
     get_by_session_id(session_id).add_ai_message(input_para_response.content)
